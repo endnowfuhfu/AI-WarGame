@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from time import sleep
 from typing import Tuple, TypeVar, Type, Iterable, ClassVar
 import random
-import requests
+
 
 # maximum and minimum values for our heuristic scores (usually represents an end of game condition)
 MAX_HEURISTIC_SCORE = 2000000000
@@ -315,9 +315,63 @@ class Game:
             return False
         unit = self.get(coords.src)
         if unit is None or unit.player != self.next_player:
-            return False
+           return False
+        
+        adjU = self.get(Coord(coords.src.row-1,coords.src.col)) #tile on top of selected unit
+        adjR = self.get(Coord(coords.src.row,coords.src.col+1)) #tile on right of selected unit
+        adjD = self.get(Coord(coords.src.row+1,coords.src.col)) #tile on bottom of selected unit
+        adjL = self.get(Coord(coords.src.row,coords.src.col-1)) #tile on left of selected unit
+      
+
+        if unit.player==Player.Attacker:
+            if unit.type==UnitType.Program or unit.type==UnitType.AI or unit.type==UnitType.Firewall:
+                if coords.dst.col > coords.src.col:
+                    return False
+                if adjU != None:
+                    if adjU.player==Player.Defender:
+                        return False
+                if adjR != None:
+                    if adjR.player==Player.Defender:
+                        return False
+                if adjD != None:
+                    if adjD.player==Player.Defender:
+                        return False
+                if adjL != None:
+                    if adjL.player==Player.Defender:
+                        return False
+            if (coords.src.col - coords.dst.col >=2 or coords.src.row - coords.dst.row >=2) or (coords.src.col - coords.dst.col >=1 and coords.src.row - coords.dst.row >=1) :
+                return False
+            
+            
+
+        if unit.player==Player.Defender:
+            if unit.type==UnitType.Program or unit.type==UnitType.AI or unit.type==UnitType.Firewall:
+                if coords.dst.col < coords.src.col:
+                    return False
+                if adjU != None:
+                    if adjU.player==Player.Attacker:
+                        return False
+                if adjR != None:
+                    if adjR.player==Player.Attacker:
+                        return False
+                if adjD != None:
+                    if adjD.player==Player.Attacker:
+                        return False
+                if adjL != None:
+                    if adjL.player==Player.Attacker:
+                        return False
+            if (coords.src.col - coords.dst.col <=-2 or coords.src.row - coords.dst.row <=-2) or (coords.src.col - coords.dst.col <=-1 and coords.src.row - coords.dst.row <=-1) :
+                return False
+                
+            
+        
+        
         unit = self.get(coords.dst)
         return (unit is None)
+
+
+
+
 
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
         """Validate and perform a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
