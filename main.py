@@ -309,19 +309,24 @@ class Game:
             target.mod_health(health_delta)
             self.remove_dead(coord)
 
+
+    def is_tile_adjacent(self, coords: CoordPair) -> bool :
+        return (coords.dst == Coord(coords.src.row-1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col+1) or coords.dst == Coord(coords.src.row+1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col-1))
+        
+
     def is_valid_move(self, coords : CoordPair) -> bool:
         """Validate a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
         if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
             return False
         unit = self.get(coords.src)
         if unit is None or unit.player != self.next_player:
-           return False
-        
+            return False
+                
         adjU = self.get(Coord(coords.src.row-1,coords.src.col)) #tile on top of selected unit
         adjR = self.get(Coord(coords.src.row,coords.src.col+1)) #tile on right of selected unit
         adjD = self.get(Coord(coords.src.row+1,coords.src.col)) #tile on bottom of selected unit
         adjL = self.get(Coord(coords.src.row,coords.src.col-1)) #tile on left of selected unit
-      
+
 
         if unit.player==Player.Attacker:
             if unit.type==UnitType.Program or unit.type==UnitType.AI or unit.type==UnitType.Firewall:
@@ -341,8 +346,7 @@ class Game:
                         return False
             if (coords.src.col - coords.dst.col >=2 or coords.src.row - coords.dst.row >=2) or (coords.src.col - coords.dst.col >=1 and coords.src.row - coords.dst.row >=1) :
                 return False
-            
-            
+           
 
         if unit.player==Player.Defender:
             if unit.type==UnitType.Program or unit.type==UnitType.AI or unit.type==UnitType.Firewall:
@@ -362,23 +366,43 @@ class Game:
                         return False
             if (coords.src.col - coords.dst.col <=-2 or coords.src.row - coords.dst.row <=-2) or (coords.src.col - coords.dst.col <=-1 and coords.src.row - coords.dst.row <=-1) :
                 return False
-                
-            
-        
+
         
         unit = self.get(coords.dst)
         return (unit is None)
 
+    def is_target_ennemy(self, coords : CoordPair) -> bool:
+        myUnit = self.get(coords.src)
+        targetUnit = self.get(coords.dst)
 
+        if targetUnit != None:
+            if targetUnit.player!=myUnit.player:
+                return True
+        return False
+    
+    def attack_target(self, coords: CoordPair, targetUnit : Unit) -> bool:
+        unit = self.get(coords.src)
+        dmgToTargetUnit = unit.damage_amount(targetUnit)
+        dmgToOwnUnit = targetUnit.damage_amount(unit)
+        targetUnit.mod_health(-abs(dmgToTargetUnit))
+        unit.mod_health(-abs(dmgToOwnUnit))
+        print(f'dmg delt TO TARGET: {dmgToTargetUnit}')
+        print(f'dmg delt TO OWN UNIT: {dmgToOwnUnit}')
 
 
 
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
         """Validate and perform a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
         if self.is_valid_move(coords):
+            print('move is VALID')
             self.set(coords.dst,self.get(coords.src))
             self.set(coords.src,None)
-            return (True,"")
+            return (True, "")
+        elif self.is_tile_adjacent(coords) and self.is_target_ennemy(coords):
+            print('move is VALID, attacking ennemy')
+            self.attack_target(coords, self.get(coords.dst))
+            return (True, "")
+            
         return (False,"invalid move")
 
     def next_turn(self):
@@ -501,6 +525,7 @@ class Game:
             move.src = src
             for dst in src.iter_adjacent():
                 move.dst = dst
+                print(f'move: {move}')
                 if self.is_valid_move(move):
                     yield move.clone()
             move.dst = src
