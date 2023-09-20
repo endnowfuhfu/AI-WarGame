@@ -88,8 +88,8 @@ class Unit:
     def damage_amount(self, target: Unit) -> int:
         """How much can this unit damage another unit."""
         amount = self.damage_table[self.type.value][target.type.value]
-        if target.health - amount < 0:
-            return target.health
+        #if target.health - amount < 0:
+            #return target.health
         return amount
 
     def repair_amount(self, target: Unit) -> int:
@@ -295,6 +295,7 @@ class Game:
         """Remove unit at Coord if dead."""
         unit = self.get(coord)
         if unit is not None and not unit.is_alive():
+            print(f'NOT ALIVE: {unit.type}')
             self.set(coord,None)
             if unit.type == UnitType.AI:
                 if unit.player == Player.Attacker:
@@ -330,7 +331,7 @@ class Game:
 
         if unit.player==Player.Attacker:
             if unit.type==UnitType.Program or unit.type==UnitType.AI or unit.type==UnitType.Firewall:
-                if coords.dst.col > coords.src.col:
+                if coords.dst.col > coords.src.col or coords.dst.row > coords.src.row:
                     return False
                 if adjU != None:
                     if adjU.player==Player.Defender:
@@ -350,7 +351,7 @@ class Game:
 
         if unit.player==Player.Defender:
             if unit.type==UnitType.Program or unit.type==UnitType.AI or unit.type==UnitType.Firewall:
-                if coords.dst.col < coords.src.col:
+                if coords.dst.col < coords.src.col or coords.dst.row < coords.src.row:
                     return False
                 if adjU != None:
                     if adjU.player==Player.Attacker:
@@ -371,7 +372,7 @@ class Game:
         unit = self.get(coords.dst)
         return (unit is None)
 
-    def is_target_ennemy(self, coords : CoordPair) -> bool:
+    def is_target_adversary(self, coords : CoordPair) -> bool:
         myUnit = self.get(coords.src)
         targetUnit = self.get(coords.dst)
 
@@ -380,27 +381,26 @@ class Game:
                 return True
         return False
     
-    def attack_target(self, coords: CoordPair, targetUnit : Unit) -> bool:
-        unit = self.get(coords.src)
+    def attack_target_adversary(self, coords : CoordPair, unit: Unit, targetUnit : Unit) -> bool:
         dmgToTargetUnit = unit.damage_amount(targetUnit)
         dmgToOwnUnit = targetUnit.damage_amount(unit)
-        targetUnit.mod_health(-abs(dmgToTargetUnit))
-        unit.mod_health(-abs(dmgToOwnUnit))
-        print(f'dmg delt TO TARGET: {dmgToTargetUnit}')
-        print(f'dmg delt TO OWN UNIT: {dmgToOwnUnit}')
+        self.mod_health(coords.src, -abs(dmgToOwnUnit))
+        self.mod_health(coords.dst, -abs(dmgToTargetUnit))
+        print(f'dmg delt from {unit.type} TO TARGET {targetUnit.type}: {dmgToTargetUnit}')
+        print(f'dmg delt from {targetUnit.type} TO OWN UNIT {unit.type}: {dmgToOwnUnit}')
 
 
 
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
         """Validate and perform a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
         if self.is_valid_move(coords):
-            print('move is VALID')
             self.set(coords.dst,self.get(coords.src))
             self.set(coords.src,None)
             return (True, "")
-        elif self.is_tile_adjacent(coords) and self.is_target_ennemy(coords):
-            print('move is VALID, attacking ennemy')
-            self.attack_target(coords, self.get(coords.dst))
+        #if the dst tile is an adversary and is adjacent, perform an attack
+        elif self.is_tile_adjacent(coords) and self.is_target_adversary(coords):
+            print('Attacking adversary')
+            self.attack_target_adversary(coords, self.get(coords.src), self.get(coords.dst))
             return (True, "")
             
         return (False,"invalid move")
