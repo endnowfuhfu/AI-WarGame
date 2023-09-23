@@ -345,7 +345,7 @@ class Game:
                 if adjL != None:
                     if adjL.player==Player.Defender:
                         return False
-            if (coords.src.col - coords.dst.col >=2 or coords.src.row - coords.dst.row >=2) or (coords.src.col - coords.dst.col >=1 and coords.src.row - coords.dst.row >=1) :
+            if ((coords.src.col - coords.dst.col >=2 or coords.src.row - coords.dst.row >=2) or (coords.src.col - coords.dst.col >=1 and coords.src.row - coords.dst.row >=1)):
                 return False
            
 
@@ -381,6 +381,15 @@ class Game:
                 return True
         return False
     
+    def is_target_ally(self, coords : CoordPair) -> bool:
+        myUnit = self.get(coords.src)
+        targetUnit = self.get(coords.dst)
+
+        if targetUnit != None:
+            if targetUnit.player==myUnit.player:
+                return True
+        return False
+    
     def attack_target_adversary(self, coords : CoordPair, unit: Unit, targetUnit : Unit) -> bool:
         dmgToTargetUnit = unit.damage_amount(targetUnit)
         dmgToOwnUnit = targetUnit.damage_amount(unit)
@@ -389,7 +398,17 @@ class Game:
         print(f'dmg delt from {unit.type} TO TARGET {targetUnit.type}: {dmgToTargetUnit}')
         print(f'dmg delt from {targetUnit.type} TO OWN UNIT {unit.type}: {dmgToOwnUnit}')
 
+    def repairing (self, coords : CoordPair, unit: Unit, targetUnit : Unit) -> bool:
+        healToTargetUnit = unit.repair_amount(targetUnit)
+        self.mod_health(coords.dst, +abs(healToTargetUnit))
+        print(f'heal to {unit.type} TO TARGET {targetUnit.type}: {healToTargetUnit}')
 
+    def repairable (self, coords : CoordPair, unit: Unit, targetUnit : Unit) -> bool:
+        healToTargetUnit = unit.repair_amount(targetUnit)
+        if healToTargetUnit >0:
+            return True
+        
+        
 
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
         """Validate and perform a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
@@ -402,7 +421,12 @@ class Game:
             print('Attacking adversary')
             self.attack_target_adversary(coords, self.get(coords.src), self.get(coords.dst))
             return (True, "")
-            
+        #if the dst tile is an ally and is adjacent, perform a repair 
+        elif self.is_tile_adjacent(coords) and self.is_target_ally(coords):
+            if self.repairable(coords, self.get(coords.src), self.get(coords.dst)):
+                print('Repairing unit')
+                self.repairing(coords, self.get(coords.src), self.get(coords.dst))
+                return (True, "")   
         return (False,"invalid move")
 
     def next_turn(self):
