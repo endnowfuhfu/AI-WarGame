@@ -295,7 +295,7 @@ class Game:
         """Remove unit at Coord if dead."""
         unit = self.get(coord)
         if unit is not None and not unit.is_alive():
-            print(f'NOT ALIVE: {unit.type}')
+            print(f'{unit.player.name}\'s {unit.type.name} ELIMINATED')
             self.set(coord,None)
             if unit.type == UnitType.AI:
                 if unit.player == Player.Attacker:
@@ -314,6 +314,18 @@ class Game:
     def is_tile_adjacent(self, coords: CoordPair) -> bool :
         return (coords.dst == Coord(coords.src.row-1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col+1) or coords.dst == Coord(coords.src.row+1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col-1))
         
+    def is_target_adversary(self, coords: CoordPair) -> bool:
+        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
+            return False
+        myUnit = self.get(coords.src)
+        if myUnit is None or myUnit.player != self.next_player:
+            return False
+        
+        targetUnit = self.get(coords.dst)
+        if targetUnit != None:
+            if targetUnit.player!=myUnit.player:
+                return True
+        return False
 
     def is_valid_move(self, coords : CoordPair) -> bool:
         """Validate a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
@@ -322,7 +334,7 @@ class Game:
         unit = self.get(coords.src)
         if unit is None or unit.player != self.next_player:
             return False
-                
+                        
         adjU = self.get(Coord(coords.src.row-1,coords.src.col)) #tile on top of selected unit
         adjR = self.get(Coord(coords.src.row,coords.src.col+1)) #tile on right of selected unit
         adjD = self.get(Coord(coords.src.row+1,coords.src.col)) #tile on bottom of selected unit
@@ -371,22 +383,6 @@ class Game:
         
         unit = self.get(coords.dst)
         return (unit is None)
-
-    def is_target_adversary(self, coords : CoordPair) -> bool:
-
-        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
-            return False
-        unit = self.get(coords.src)
-        if unit is None or unit.player != self.next_player:
-            return False
-        
-        myUnit = self.get(coords.src)
-        targetUnit = self.get(coords.dst)
-
-        if targetUnit != None:
-            if targetUnit.player!=myUnit.player:
-                return True
-        return False
     
     def is_target_ally(self, coords : CoordPair) -> bool:
         myUnit = self.get(coords.src)
@@ -402,8 +398,8 @@ class Game:
         dmgToOwnUnit = targetUnit.damage_amount(unit)
         self.mod_health(coords.src, -abs(dmgToOwnUnit))
         self.mod_health(coords.dst, -abs(dmgToTargetUnit))
-        print(f'dmg delt from {unit.type} TO TARGET {targetUnit.type}: {dmgToTargetUnit}')
-        print(f'dmg delt from {targetUnit.type} TO OWN UNIT {unit.type}: {dmgToOwnUnit}')
+        print(f'{unit.player.name} DAMAGE {unit.type.name} TO {targetUnit.type.name}: {-abs(dmgToTargetUnit)}')
+        print(f'{targetUnit.player.name} DAMAGE {targetUnit.type.name} TO {unit.type.name}: {-abs(dmgToOwnUnit)}')
 
     def repairing (self, coords : CoordPair, unit: Unit, targetUnit : Unit) -> bool:
         healToTargetUnit = unit.repair_amount(targetUnit)
@@ -415,8 +411,6 @@ class Game:
         if healToTargetUnit >0:
             return True
         
-        
-
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
         """Validate and perform a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
         if self.is_valid_move(coords):
