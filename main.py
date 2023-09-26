@@ -373,6 +373,13 @@ class Game:
         return (unit is None)
 
     def is_target_adversary(self, coords : CoordPair) -> bool:
+
+        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
+            return False
+        unit = self.get(coords.src)
+        if unit is None or unit.player != self.next_player:
+            return False
+        
         myUnit = self.get(coords.src)
         targetUnit = self.get(coords.dst)
 
