@@ -404,7 +404,7 @@ class Game:
     def repairing (self, coords : CoordPair, unit: Unit, targetUnit : Unit) -> bool:
         healToTargetUnit = unit.repair_amount(targetUnit)
         self.mod_health(coords.dst, +abs(healToTargetUnit))
-        print(f'heal to {unit.type} TO TARGET {targetUnit.type}: {healToTargetUnit}')
+        print(f'{unit.player.name}\'s {unit.type.name} HEAL TO {targetUnit.type.name}: +{healToTargetUnit}')
 
     def repairable (self, coords : CoordPair, unit: Unit, targetUnit : Unit) -> bool:
         healToTargetUnit = unit.repair_amount(targetUnit)
