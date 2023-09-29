@@ -411,6 +411,46 @@ class Game:
         if healToTargetUnit >0:
             return True
         
+    def self_destruct(self, coord: Coord):
+        """Apply the self-destruct move for a unit at the given coordinate."""
+        # List of all possible surrounding coordinates
+        surrounding_coords = [
+            Coord(row=coord.row - 1, col=coord.col - 1),  # top-left
+            Coord(row=coord.row - 1, col=coord.col),      # top
+            Coord(row=coord.row - 1, col=coord.col + 1),  # top-right
+            Coord(row=coord.row, col=coord.col - 1),      # left
+            Coord(row=coord.row, col=coord.col + 1),      # right
+            Coord(row=coord.row + 1, col=coord.col - 1),  # bottom-left
+            Coord(row=coord.row + 1, col=coord.col),      # bottom
+            Coord(row=coord.row + 1, col=coord.col + 1)   # bottom-right
+        ]
+        
+        # Retrieve the self-destructing unit
+        self_destruct_unit = self.get(coord)
+        
+        for sur_coord in surrounding_coords:
+            if self.is_valid_coord(sur_coord):
+                target_unit = self.get(sur_coord)
+                if target_unit:
+                    # Damage amount to the target unit (you may adjust the damage value)
+                    damage_to_target = 2
+                    # Modify the health of the target unit
+                    self.mod_health(sur_coord, -abs(damage_to_target))
+                    # Print out the damage message
+                    print(f'{self_destruct_unit.player.name} DAMAGE {self_destruct_unit.type.name} TO {target_unit.type.name}: {-abs(damage_to_target)}')
+                    
+                    # Check if the health of the target unit is 0 or below and remove the unit
+                    if target_unit.health <= 0:
+                        self.set(sur_coord, None)
+        
+        # Reduce the health of the self-destructing unit to 0
+        self.mod_health(coord, -abs(self.get(coord).health))
+
+        # After performing the self-destruction, if successful
+        return (True, f"{self_destruct_unit.type.name} self-destructed successfully.")
+
+
+        
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
         """Validate and perform a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
         if self.is_valid_move(coords):
@@ -473,6 +513,21 @@ class Game:
             return False
         return True
 
+    def read_self_destruct(self):
+        """Prompt the player for self-destruct coordinates and process the action."""
+        while True:
+            coords_input = input("Enter the coordinates of the unit to self-destruct: ")
+            coord = Coord.from_string(coords_input)  # Convert string to Coord
+            if coord and self.is_valid_coord(coord) and self.get(coord) and self.get(coord).player == self.next_player:
+                success, message = self.self_destruct(coord)
+                if success:
+                    print(message)
+                    return True  # Return True to indicate successful self-destruct
+                else:
+                    print(message)  # Print error message from self_destruct
+            else:
+                print("Invalid coordinates. Please enter again.")
+
     def read_move(self) -> CoordPair:
         """Read a move from keyboard and return as a CoordPair."""
         while True:
@@ -484,14 +539,14 @@ class Game:
                 print('Invalid coordinates! Try again.')
     
     def human_turn(self):
-        """Human player plays a move (or get via broker)."""
+        """Human player plays a move (or get via broker), with the option to self-destruct a unit."""
         if self.options.broker is not None:
             print("Getting next move with auto-retry from game broker...")
             while True:
                 mv = self.get_move_from_broker()
                 if mv is not None:
-                    (success,result) = self.perform_move(mv)
-                    print(f"Broker {self.next_player.name}: ",end='')
+                    (success, result) = self.perform_move(mv)
+                    print(f"Broker {self.next_player.name}: ", end='')
                     print(result)
                     if success:
                         self.next_turn()
@@ -499,15 +554,30 @@ class Game:
                 sleep(0.1)
         else:
             while True:
+                # Prompt for self-destruct at the start of the turn
+                s = input("Do you want to self-destruct a unit? (yes/no): ")
+                if s.lower() == "yes":
+                    self_destruct_success = self.read_self_destruct()
+                    if self_destruct_success:
+                        self.next_turn()
+                        return  # If self-destruct is successful, end the human turn
+                elif s.lower() == "no":
+                    break
+                else:
+                    print("Invalid input. Please enter 'yes' or 'no'.")
+                    
+            # If no self-destruct or self-destruct failed, proceed with regular move
+            while True:
                 mv = self.read_move()
-                (success,result) = self.perform_move(mv)
+                (success, result) = self.perform_move(mv)
                 if success:
-                    print(f"Player {self.next_player.name}: ",end='')
+                    print(f"Player {self.next_player.name}: ", end='')
                     print(result)
                     self.next_turn()
                     break
                 else:
                     print("The move is not valid! Try again.")
+
 
     def computer_turn(self) -> CoordPair | None:
         """Computer plays a move."""
