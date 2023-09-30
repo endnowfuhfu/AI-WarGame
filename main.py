@@ -820,6 +820,8 @@ def main():
     params = f'Timeout in seconds: {max_time} \nMax number of turns: {max_turns} \nAlpha-beta: {is_alphabeta} \n'
     f.write(params)     
     fileparam_playmode = ""
+
+    # to use later
     if playmode == "manual":
         fileparam_playmode = "Player 1 = H & Player 2 = H\n"
     elif playmode == "attacker":
@@ -828,6 +830,10 @@ def main():
         fileparam_playmode = "Player 1 = AI & Player 2 = H\n"
     elif playmode == "comp":
         fileparam_playmode = "Player 1 = AI & Player 2 = AI\n"
+
+    # for now, only H-H can be done
+    fileparam_playmode = "Player 1 = H & Player 2 = H\n"
+
     f.write(fileparam_playmode)
     f.close()
 
