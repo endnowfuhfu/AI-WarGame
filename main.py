@@ -310,23 +310,6 @@ class Game:
             target.mod_health(health_delta)
             self.remove_dead(coord)
 
-
-    def is_tile_adjacent(self, coords: CoordPair) -> bool :
-        return (coords.dst == Coord(coords.src.row-1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col+1) or coords.dst == Coord(coords.src.row+1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col-1))
-        
-    def is_target_adversary(self, coords: CoordPair) -> bool:
-        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
-            return False
-        myUnit = self.get(coords.src)
-        if myUnit is None or myUnit.player != self.next_player:
-            return False
-        
-        targetUnit = self.get(coords.dst)
-        if targetUnit != None:
-            if targetUnit.player!=myUnit.player:
-                return True
-        return False
-
     def is_valid_move(self, coords : CoordPair) -> bool:
         """Validate a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
         if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
@@ -390,12 +373,45 @@ class Game:
         unit = self.get(coords.dst)
         return (unit is None)
     
+    def is_tile_adjacent(self, coords: CoordPair) -> bool :
+        return (coords.dst == Coord(coords.src.row-1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col+1) or coords.dst == Coord(coords.src.row+1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col-1))
+        
+    def is_target_adversary(self, coords: CoordPair) -> bool:
+        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
+            return False
+        myUnit = self.get(coords.src)
+        if myUnit is None or myUnit.player != self.next_player:
+            return False
+        
+        targetUnit = self.get(coords.dst)
+        if targetUnit != None:
+            if targetUnit.player!=myUnit.player:
+                return True
+        return False
+    
     def is_target_ally(self, coords : CoordPair) -> bool:
         myUnit = self.get(coords.src)
         targetUnit = self.get(coords.dst)
 
-        if targetUnit != None:
+        if targetUnit != None and myUnit != None:
             if targetUnit.player==myUnit.player:
+                return True
+        return False
+    
+    def is_src_tile_dst(self, coords : CoordPair) -> bool:
+
+        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
+            return False
+        unit = self.get(coords.src)
+        if unit is None or unit.player != self.next_player:
+            return False
+        
+        srcRow = coords.src.row
+        srcCol = coords.src.col
+        targetRow = coords.dst.row
+        targetCol = coords.dst.col
+
+        if srcRow == targetRow and srcCol == targetCol:
                 return True
         return False
     
@@ -474,6 +490,10 @@ class Game:
                 print('Repairing unit')
                 self.repairing(coords, self.get(coords.src), self.get(coords.dst))
                 return (True, "")   
+        elif self.is_src_tile_dst(coords):
+            print('Self-destructing')
+            self.self_destruct(coords.src)
+            return (True, "")
         return (False,"invalid move")
 
     def next_turn(self):
@@ -519,21 +539,6 @@ class Game:
             return False
         return True
 
-    def read_self_destruct(self):
-        """Prompt the player for self-destruct coordinates and process the action."""
-        while True:
-            coords_input = input("Enter the coordinates of the unit to self-destruct: ")
-            coord = Coord.from_string(coords_input)  # Convert string to Coord
-            if coord and self.is_valid_coord(coord) and self.get(coord) and self.get(coord).player == self.next_player:
-                success, message = self.self_destruct(coord)
-                if success:
-                    print(message)
-                    return True  # Return True to indicate successful self-destruct
-                else:
-                    print(message)  # Print error message from self_destruct
-            else:
-                print("Invalid coordinates. Please enter again.")
-
     def read_move(self) -> CoordPair:
         """Read a move from keyboard and return as a CoordPair."""
         while True:
@@ -545,14 +550,14 @@ class Game:
                 print('Invalid coordinates! Try again.')
     
     def human_turn(self):
-        """Human player plays a move (or get via broker), with the option to self-destruct a unit."""
+        """Human player plays a move (or get via broker)."""
         if self.options.broker is not None:
             print("Getting next move with auto-retry from game broker...")
             while True:
                 mv = self.get_move_from_broker()
                 if mv is not None:
-                    (success, result) = self.perform_move(mv)
-                    print(f"Broker {self.next_player.name}: ", end='')
+                    (success,result) = self.perform_move(mv)
+                    print(f"Broker {self.next_player.name}: ",end='')
                     print(result)
                     if success:
                         self.next_turn()
@@ -560,24 +565,10 @@ class Game:
                 sleep(0.1)
         else:
             while True:
-                # Prompt for self-destruct at the start of the turn
-                s = input("Do you want to self-destruct a unit? (yes/no): ")
-                if s.lower() == "yes":
-                    self_destruct_success = self.read_self_destruct()
-                    if self_destruct_success:
-                        self.next_turn()
-                        return  # If self-destruct is successful, end the human turn
-                elif s.lower() == "no":
-                    break
-                else:
-                    print("Invalid input. Please enter 'yes' or 'no'.")
-                    
-            # If no self-destruct or self-destruct failed, proceed with regular move
-            while True:
                 mv = self.read_move()
-                (success, result) = self.perform_move(mv)
+                (success,result) = self.perform_move(mv)
                 if success:
-                    print(f"Player {self.next_player.name}: ", end='')
+                    print(f"Player {self.next_player.name}: ",end='')
                     print(result)
                     self.next_turn()
                     break
@@ -751,7 +742,7 @@ def main():
         print(game)
         winner = game.has_winner()
         if winner is not None:
-            print(f"{winner.name} wins!")
+            print(f"{winner.name} wins in {game.turns_played} turns!")
             break
         if game.options.game_type == GameType.AttackerVsDefender:
             game.human_turn()
