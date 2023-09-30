@@ -13,6 +13,8 @@ import random
 MAX_HEURISTIC_SCORE = 2000000000
 MIN_HEURISTIC_SCORE = -2000000000
 
+filename = ""
+
 class UnitType(Enum):
     """Every unit type."""
     AI = 0
@@ -312,8 +314,6 @@ class Game:
 
     def is_valid_move(self, coords : CoordPair) -> bool:
         """Validate a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
-        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
-            return False
         unit = self.get(coords.src)
         if unit is None or unit.player != self.next_player:
             return False
@@ -377,8 +377,6 @@ class Game:
         return (coords.dst == Coord(coords.src.row-1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col+1) or coords.dst == Coord(coords.src.row+1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col-1))
         
     def is_target_adversary(self, coords: CoordPair) -> bool:
-        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
-            return False
         myUnit = self.get(coords.src)
         if myUnit is None or myUnit.player != self.next_player:
             return False
@@ -399,9 +397,6 @@ class Game:
         return False
     
     def is_src_tile_dst(self, coords : CoordPair) -> bool:
-
-        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
-            return False
         unit = self.get(coords.src)
         if unit is None or unit.player != self.next_player:
             return False
@@ -474,25 +469,46 @@ class Game:
 
         
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
+        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
+            return (False, "")
+        
+        f = open(filename, "a")
+
         """Validate and perform a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
         if self.is_valid_move(coords):
             self.set(coords.dst,self.get(coords.src))
             self.set(coords.src,None)
+
+            # write to file
+            f.write(f"\nMove from {coords.src} to {coords.dst}\n")
+            f.close()
             return (True, "")
         #if the dst tile is an adversary and is adjacent, perform an attack
         elif self.is_tile_adjacent(coords) and self.is_target_adversary(coords):
             print('Attacking adversary')
             self.attack_target_adversary(coords, self.get(coords.src), self.get(coords.dst))
+
+            # write to file
+            f.write(f"\nAttack from {coords.src} to {coords.dst}\n")
+            f.close()
             return (True, "")
         #if the dst tile is an ally and is adjacent, perform a repair 
         elif self.is_tile_adjacent(coords) and self.is_target_ally(coords):
             if self.repairable(coords, self.get(coords.src), self.get(coords.dst)):
                 print('Repairing unit')
                 self.repairing(coords, self.get(coords.src), self.get(coords.dst))
+
+                # write to file
+                f.write(f"\nHeal from {coords.src} to {coords.dst}\n")
+                f.close()
                 return (True, "")   
         elif self.is_src_tile_dst(coords):
             print('Self-destructing')
             self.self_destruct(coords.src)
+
+            # write to file
+            f.write(f"\n{coords.src} unit self-destructs\n")
+            f.close()
             return (True, "")
         return (False,"invalid move")
 
@@ -526,6 +542,12 @@ class Game:
                 else:
                     output += f"{str(unit):^3} "
             output += "\n"
+
+        # Write to file the current state of the game
+        if not filename == "":
+            f = open(filename, "a")
+            f.write("\n"+output)
+            f.close()
         return output
 
     def __str__(self) -> str:
@@ -608,6 +630,9 @@ class Game:
             else:
                 return Player.Attacker    
         elif self._defender_has_ai:
+            return Player.Defender
+        #if both AIs die at the same time, the defender wins
+        elif not self._defender_has_ai and not self._attacker_has_ai:
             return Player.Defender
 
     def move_candidates(self) -> Iterable[CoordPair]:
@@ -698,6 +723,54 @@ class Game:
         except Exception as error:
             print(f"Broker error: {error}")
         return None
+    
+def read_max_time_allowed() -> float:
+    while True:
+        time_input = input('Enter the maximum time (in seconds) allowed for the AI to return its move: ')
+        try:
+            max_time = float(time_input)
+            return max_time
+        except ValueError:
+            print("Incorrect Input. Please provide a number.")
+
+def read_max_turns() -> float:
+    while True:
+        turn_input = input('Enter the maximum number of turns: ')
+        try:
+            max_turns = float(turn_input)
+            return max_turns
+        except ValueError:
+            print("Incorrect Input. Please provide a number.")
+
+def read_is_alphabeta() -> str:
+    while True:
+        bool_input = input('Enter an algorithm: alpha-beta (T) or minimax (F): ')
+        if bool_input.upper() == 'T':
+            return 'true'
+        elif bool_input.upper() == 'F':
+            return 'false'
+        else:
+            print('Invalid input. Please put T for alpha-beta and F for minimax.')
+
+def read_playmodes() -> str:
+    while True:
+        p_input = input('Enter the play mode: 1. Human vs. Human | 2. Human vs. AI | 3. AI vs. Human | 4. AI vs. AI: ')
+        if p_input == '1':
+            return "manual"
+        elif p_input == '2':
+            return "attacker"
+        elif p_input == '3':
+            return "defender"
+        elif p_input == '4':
+            return "comp"
+        else:
+            print('Invalid input. Please choose a play mode [1-4].')
+
+def formatFloat(num):
+  if num % 1 == 0:
+    return int(num)
+  else:
+    return num
 
 ##############################################################################################################
 
@@ -725,6 +798,46 @@ def main():
     # set up game options
     options = Options(game_type=game_type)
 
+    # Game Parameters
+    max_time = formatFloat(read_max_time_allowed()) #NOT USED IN D1
+    args.max_time = max_time
+    print(f'max time: {max_time}')
+
+    max_turns = formatFloat(read_max_turns())
+    options.max_turns = max_turns
+    print(f'max turns: {max_turns}')
+
+    is_alphabeta = read_is_alphabeta() #NOT USED IN D1
+    playmode = read_playmodes() #NOT USED IN D1
+
+    # Create Output file gameTrace-<b>-<t>-<m>.txt
+    global filename
+    filename = "gameTrace-{}-{}-{}.txt".format(is_alphabeta, max_time, max_turns)
+    f = open(filename, "w")
+
+    # Game params to write to file
+    #params = 'Timeout in seconds: '+{str(max_time)}+'\n'+'Max number of turns: '+{str(max_turns)}+'\n'+'Alphabeta: '+{is_alphabeta}+'\n'+'Play mode: '+{str(playmode)}
+    params = f'Timeout in seconds: {max_time} \nMax number of turns: {max_turns} \nAlpha-beta: {is_alphabeta} \n'
+    f.write(params)     
+    fileparam_playmode = ""
+
+    # to use later
+    if playmode == "manual":
+        fileparam_playmode = "Player 1 = H & Player 2 = H\n"
+    elif playmode == "attacker":
+        fileparam_playmode = "Player 1 = H & Player 2 = AI\n"
+    elif playmode == "defender":
+        fileparam_playmode = "Player 1 = AI & Player 2 = H\n"
+    elif playmode == "comp":
+        fileparam_playmode = "Player 1 = AI & Player 2 = AI\n"
+
+    # for now, only H-H can be done
+    fileparam_playmode = "Player 1 = H & Player 2 = H\n"
+
+    f.write(fileparam_playmode)
+    f.close()
+
+
     # override class defaults via command line options
     if args.max_depth is not None:
         options.max_depth = args.max_depth
@@ -742,6 +855,9 @@ def main():
         print(game)
         winner = game.has_winner()
         if winner is not None:
+            f = open(filename, "a")
+            f.write(f"{winner.name} wins in {game.turns_played} turns!")
+            f.close()
             print(f"{winner.name} wins in {game.turns_played} turns!")
             break
         if game.options.game_type == GameType.AttackerVsDefender:
