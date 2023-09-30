@@ -13,6 +13,8 @@ import random
 MAX_HEURISTIC_SCORE = 2000000000
 MIN_HEURISTIC_SCORE = -2000000000
 
+filename = ""
+
 class UnitType(Enum):
     """Every unit type."""
     AI = 0
@@ -469,25 +471,44 @@ class Game:
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
         if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
             return (False, "")
+        
+        f = open(filename, "a")
+
         """Validate and perform a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
         if self.is_valid_move(coords):
             self.set(coords.dst,self.get(coords.src))
             self.set(coords.src,None)
+
+            # write to file
+            f.write(f"\nMove from {coords.src} to {coords.dst}\n")
+            f.close()
             return (True, "")
         #if the dst tile is an adversary and is adjacent, perform an attack
         elif self.is_tile_adjacent(coords) and self.is_target_adversary(coords):
             print('Attacking adversary')
             self.attack_target_adversary(coords, self.get(coords.src), self.get(coords.dst))
+
+            # write to file
+            f.write(f"\nAttack from {coords.src} to {coords.dst}\n")
+            f.close()
             return (True, "")
         #if the dst tile is an ally and is adjacent, perform a repair 
         elif self.is_tile_adjacent(coords) and self.is_target_ally(coords):
             if self.repairable(coords, self.get(coords.src), self.get(coords.dst)):
                 print('Repairing unit')
                 self.repairing(coords, self.get(coords.src), self.get(coords.dst))
+
+                # write to file
+                f.write(f"\nHeal from {coords.src} to {coords.dst}\n")
+                f.close()
                 return (True, "")   
         elif self.is_src_tile_dst(coords):
             print('Self-destructing')
             self.self_destruct(coords.src)
+
+            # write to file
+            f.write(f"\n{coords.src} unit self-destructs\n")
+            f.close()
             return (True, "")
         return (False,"invalid move")
 
@@ -521,6 +542,12 @@ class Game:
                 else:
                     output += f"{str(unit):^3} "
             output += "\n"
+
+        # Write to file the current state of the game
+        if not filename == "":
+            f = open(filename, "a")
+            f.write("\n"+output)
+            f.close()
         return output
 
     def __str__(self) -> str:
@@ -715,13 +742,13 @@ def read_max_turns() -> float:
         except ValueError:
             print("Incorrect Input. Please provide a number.")
 
-def read_is_alphabeta() -> bool:
+def read_is_alphabeta() -> str:
     while True:
         bool_input = input('Enter an algorithm: alpha-beta (T) or minimax (F): ')
         if bool_input.upper() == 'T':
-            return True
+            return 'true'
         elif bool_input.upper() == 'F':
-            return False
+            return 'false'
         else:
             print('Invalid input. Please put T for alpha-beta and F for minimax.')
 
@@ -738,6 +765,12 @@ def read_playmodes() -> str:
             return "comp"
         else:
             print('Invalid input. Please choose a play mode [1-4].')
+
+def formatFloat(num):
+  if num % 1 == 0:
+    return int(num)
+  else:
+    return num
 
 ##############################################################################################################
 
@@ -765,15 +798,39 @@ def main():
     # set up game options
     options = Options(game_type=game_type)
 
-    #Game Parameters
-    args.max_time = read_max_time_allowed() #NOT USED IN D1
-    print(f'max time is: {args.max_time}')
-    options.max_turns = read_max_turns()
-    print(f'max turns is: {options.max_turns}')
+    # Game Parameters
+    max_time = formatFloat(read_max_time_allowed()) #NOT USED IN D1
+    args.max_time = max_time
+    print(f'max time: {max_time}')
+
+    max_turns = formatFloat(read_max_turns())
+    options.max_turns = max_turns
+    print(f'max turns: {max_turns}')
+
     is_alphabeta = read_is_alphabeta() #NOT USED IN D1
     playmode = read_playmodes() #NOT USED IN D1
 
-    
+    # Create Output file gameTrace-<b>-<t>-<m>.txt
+    global filename
+    filename = "gameTrace-{}-{}-{}.txt".format(is_alphabeta, max_time, max_turns)
+    f = open(filename, "w")
+
+    # Game params to write to file
+    #params = 'Timeout in seconds: '+{str(max_time)}+'\n'+'Max number of turns: '+{str(max_turns)}+'\n'+'Alphabeta: '+{is_alphabeta}+'\n'+'Play mode: '+{str(playmode)}
+    params = f'Timeout in seconds: {max_time} \nMax number of turns: {max_turns} \nAlpha-beta: {is_alphabeta} \n'
+    f.write(params)     
+    fileparam_playmode = ""
+    if playmode == "manual":
+        fileparam_playmode = "Player 1 = H & Player 2 = H\n"
+    elif playmode == "attacker":
+        fileparam_playmode = "Player 1 = H & Player 2 = AI\n"
+    elif playmode == "defender":
+        fileparam_playmode = "Player 1 = AI & Player 2 = H\n"
+    elif playmode == "comp":
+        fileparam_playmode = "Player 1 = AI & Player 2 = AI\n"
+    f.write(fileparam_playmode)
+    f.close()
+
 
     # override class defaults via command line options
     if args.max_depth is not None:
@@ -792,6 +849,9 @@ def main():
         print(game)
         winner = game.has_winner()
         if winner is not None:
+            f = open(filename, "a")
+            f.write(f"{winner.name} wins in {game.turns_played} turns!")
+            f.close()
             print(f"{winner.name} wins in {game.turns_played} turns!")
             break
         if game.options.game_type == GameType.AttackerVsDefender:
