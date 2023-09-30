@@ -328,11 +328,13 @@ class Game:
         adjD = self.get(Coord(coords.src.row+1,coords.src.col)) #tile on bottom of selected unit
         adjL = self.get(Coord(coords.src.row,coords.src.col-1)) #tile on left of selected unit
 
-
+        #restrict attacker's movement
         if unit.player==Player.Attacker:
+            #restrict movement to up or left for Program, AI, Firewall
             if unit.type==UnitType.Program or unit.type==UnitType.AI or unit.type==UnitType.Firewall:
                 if coords.dst.col > coords.src.col or coords.dst.row > coords.src.row:
                     return False
+                #check if the unit is adjacent to an enemy unit
                 if adjU != None:
                     if adjU.player==Player.Defender:
                         return False
@@ -345,14 +347,17 @@ class Game:
                 if adjL != None:
                     if adjL.player==Player.Defender:
                         return False
+            #units can only move 1 tile
             if ((coords.src.col - coords.dst.col >=2 or coords.src.row - coords.dst.row >=2) or (coords.src.col - coords.dst.col >=1 and coords.src.row - coords.dst.row >=1)):
                 return False
            
-
+        #restrict defender's movement
         if unit.player==Player.Defender:
+            #restrict movement to down or right for Program, AI and Firewall
             if unit.type==UnitType.Program or unit.type==UnitType.AI or unit.type==UnitType.Firewall:
                 if coords.dst.col < coords.src.col or coords.dst.row < coords.src.row:
                     return False
+                #check if the unit is adjacent to an enemy unit
                 if adjU != None:
                     if adjU.player==Player.Attacker:
                         return False
@@ -365,6 +370,7 @@ class Game:
                 if adjL != None:
                     if adjL.player==Player.Attacker:
                         return False
+            #units can only move 1 tile
             if (coords.src.col - coords.dst.col <=-2 or coords.src.row - coords.dst.row <=-2) or (coords.src.col - coords.dst.col <=-1 and coords.src.row - coords.dst.row <=-1) :
                 return False
 
