@@ -696,6 +696,48 @@ class Game:
         except Exception as error:
             print(f"Broker error: {error}")
         return None
+    
+def read_max_time_allowed() -> float:
+    while True:
+        time_input = input('Enter the maximum time (in seconds) allowed for the AI to return its move: ')
+        try:
+            max_time = float(time_input)
+            return max_time
+        except ValueError:
+            print("Incorrect Input. Please provide a number.")
+
+def read_max_turns() -> float:
+    while True:
+        turn_input = input('Enter the maximum number of turns: ')
+        try:
+            max_turns = float(turn_input)
+            return max_turns
+        except ValueError:
+            print("Incorrect Input. Please provide a number.")
+
+def read_is_alphabeta() -> bool:
+    while True:
+        bool_input = input('Enter an algorithm: alpha-beta (T) or minimax (F): ')
+        if bool_input.upper() == 'T':
+            return True
+        elif bool_input.upper() == 'F':
+            return False
+        else:
+            print('Invalid input. Please put T for alpha-beta and F for minimax.')
+
+def read_playmodes() -> str:
+    while True:
+        p_input = input('Enter the play mode: 1. Human vs. Human | 2. Human vs. AI | 3. AI vs. Human | 4. AI vs. AI: ')
+        if p_input == '1':
+            return "manual"
+        elif p_input == '2':
+            return "attacker"
+        elif p_input == '3':
+            return "defender"
+        elif p_input == '4':
+            return "comp"
+        else:
+            print('Invalid input. Please choose a play mode [1-4].')
 
 ##############################################################################################################
 
@@ -722,6 +764,16 @@ def main():
 
     # set up game options
     options = Options(game_type=game_type)
+
+    #Game Parameters
+    args.max_time = read_max_time_allowed() #NOT USED IN D1
+    print(f'max time is: {args.max_time}')
+    options.max_turns = read_max_turns()
+    print(f'max turns is: {options.max_turns}')
+    is_alphabeta = read_is_alphabeta() #NOT USED IN D1
+    playmode = read_playmodes() #NOT USED IN D1
+
+    
 
     # override class defaults via command line options
     if args.max_depth is not None:
