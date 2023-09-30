@@ -312,8 +312,6 @@ class Game:
 
     def is_valid_move(self, coords : CoordPair) -> bool:
         """Validate a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
-        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
-            return False
         unit = self.get(coords.src)
         if unit is None or unit.player != self.next_player:
             return False
@@ -377,8 +375,6 @@ class Game:
         return (coords.dst == Coord(coords.src.row-1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col+1) or coords.dst == Coord(coords.src.row+1,coords.src.col) or coords.dst == Coord(coords.src.row,coords.src.col-1))
         
     def is_target_adversary(self, coords: CoordPair) -> bool:
-        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
-            return False
         myUnit = self.get(coords.src)
         if myUnit is None or myUnit.player != self.next_player:
             return False
@@ -399,9 +395,6 @@ class Game:
         return False
     
     def is_src_tile_dst(self, coords : CoordPair) -> bool:
-
-        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
-            return False
         unit = self.get(coords.src)
         if unit is None or unit.player != self.next_player:
             return False
@@ -474,6 +467,8 @@ class Game:
 
         
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
+        if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
+            return (False, "")
         """Validate and perform a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
         if self.is_valid_move(coords):
             self.set(coords.dst,self.get(coords.src))
