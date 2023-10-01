@@ -455,10 +455,6 @@ class Game:
                     self.mod_health(sur_coord, -abs(damage_to_target))
                     # Print out the damage message
                     print(f'{self_destruct_unit.player.name} DAMAGE {self_destruct_unit.type.name} TO {target_unit.type.name}: {-abs(damage_to_target)}')
-                    
-                    # Check if the health of the target unit is 0 or below and remove the unit
-                    if target_unit.health <= 0:
-                        self.set(sur_coord, None)
         
         # Reduce the health of the self-destructing unit to 0
         self.mod_health(coord, -abs(self.get(coord).health))
