@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import Enum
 from dataclasses import dataclass, field
 from time import sleep
+import time
 from typing import Tuple, TypeVar, Type, Iterable, ClassVar
 import random
 
@@ -461,8 +462,6 @@ class Game:
 
         # After performing the self-destruction, if successful
         return (True, f"{self_destruct_unit.type.name} self-destructed successfully.")
-
-
         
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
         if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
@@ -507,6 +506,19 @@ class Game:
             f.close()
             return (True, "")
         return (False,"invalid move")
+
+    def simulate_move(self, move):
+        """
+        Simulate applying the given move to the game state without permanently altering the state.
+        This method creates and returns a new Game instance with the move applied.
+        """
+        # Clone the current game state using the clone method
+        new_game = self.clone()
+
+        # Apply the move to the cloned game state's board using the perform_move method.
+        new_game.perform_move(move)
+
+        return new_game  # Return the new game state with the simulated move
 
     def next_turn(self):
         """Transitions game to the next turn."""
@@ -638,7 +650,7 @@ class Game:
             move.src = src
             for dst in src.iter_adjacent():
                 move.dst = dst
-                print(f'move: {move}')
+                #print(f'move: {move}')
                 if self.is_valid_move(move):
                     yield move.clone()
             move.dst = src
@@ -653,23 +665,166 @@ class Game:
         else:
             return (0, None, 0)
 
-    def suggest_move(self) -> CoordPair | None:
-        """Suggest the next move using minimax alpha beta. TODO: REPLACE RANDOM_MOVE WITH PROPER GAME LOGIC!!!"""
-        start_time = datetime.now()
-        (score, move, avg_depth) = self.random_move()
-        elapsed_seconds = (datetime.now() - start_time).total_seconds()
-        self.stats.total_seconds += elapsed_seconds
+    def evaluate_state(self) -> float:
+        """
+        Evaluates the game state using a heuristic that considers the count and type of units for each player.
+        """
+        # Initialize counts for each unit type for both players
+        V_P1 = T_P1 = F_P1 = P_P1 = AI_P1 = 0
+        V_P2 = T_P2 = F_P2 = P_P2 = AI_P2 = 0
+        
+        # Iterate over all cells in the game board to count unit types for each player
+        for row in self.board:
+            for cell in row:
+                if cell is not None:  # Check if the cell is not empty
+                    unit_type = getattr(cell, 'type', None)  # Safely get 'type' attribute
+                    player = getattr(cell, 'player', None)   # Safely get 'player' attribute
+                    
+                    # Check if 'type' and 'player' attributes exist and are not None
+                    if unit_type is not None and player is not None:
+                        # Increment counts based on unit type and owner
+                        if unit_type == UnitType.Virus:
+                            if player == Player.Attacker:
+                                V_P1 += 1
+                            else:
+                                V_P2 += 1
+                        elif unit_type == UnitType.Tech:
+                            if player == Player.Attacker:
+                                T_P1 += 1
+                            else:
+                                T_P2 += 1
+                        elif unit_type == UnitType.Firewall:
+                            if player == Player.Attacker:
+                                F_P1 += 1
+                            else:
+                                F_P2 += 1
+                        elif unit_type == UnitType.Program:
+                            if player == Player.Attacker:
+                                P_P1 += 1
+                            else:
+                                P_P2 += 1
+                        elif unit_type == UnitType.AI:
+                            if player == Player.Attacker:
+                                AI_P1 += 1
+                            else:
+                                AI_P2 += 1
+                    
+        # Compute the heuristic value using the counts and weights for each unit type
+        e0 = (3 * V_P1 + 3 * T_P1 + 3 * F_P1 + 3 * P_P1 + 9999 * AI_P1) - (3 * V_P2 + 3 * T_P2 + 3 * F_P2 + 3 * P_P2 + 9999 * AI_P2)
+        
+        # Adjust heuristic based on the next player to move
+        next_player = self.next_player  # Assuming this method returns Player.Attacker or Player.Defender
+        if next_player == Player.Attacker:  
+            # If the next player is the attacker (Player 1), a high heuristic should be good for Player 1
+            pass  # In this case, e0 is already in the perspective of Player 1
+        elif next_player == Player.Defender:
+            # If the next player is the defender (Player 2), a high heuristic should be good for Player 2
+            e0 *= -1  # Invert the perspective to be from the point of view of Player 2
+
+        
+        return float(e0)
+
+    def minimax(self, depth, maximizing_player, start_time, time_limit):
+        if depth == 0 or (time.time() - start_time) > time_limit:
+            return self.evaluate_state(), None, {depth: 1}  # Placeholder for Heuristic
+
+        move_candidates = list(self.move_candidates())
+        best_move = None
+        evals_per_depth = {depth: 0}
+        if maximizing_player:
+            max_eval = float('-inf')
+            for move in move_candidates:
+                new_game_state = self.simulate_move(move)
+                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, False)  # Use the new game state
+                if eval > max_eval:
+                    max_eval = eval
+                    best_move = move
+                evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
+            return max_eval, best_move, evals_per_depth
+        else:
+            min_eval = float('inf')
+            for move in move_candidates:
+                new_game_state = self.simulate_move(move)
+                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, True)  # Use the new game state
+                if eval < min_eval:
+                    min_eval = eval
+                    best_move = move
+                evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
+            return min_eval, best_move, evals_per_depth
+
+
+    def alpha_beta(self, depth, alpha, beta, maximizing_player, start_time, time_limit):
+        # Base Case: depth reached or time limit exceeded
+        current_time = time.time()
+        if depth == 0 or (current_time - start_time) > time_limit:
+            return self.evaluate_state(), None, {depth: 1}  # Adjusted Placeholder for Heuristic
+        
+        move_candidates = list(self.move_candidates())
+        best_move = None
+        evals_per_depth = {depth: 0}
+        
+        if maximizing_player:
+            max_eval = float('-inf')
+            for move in move_candidates:
+                if (time.time() - start_time) > time_limit:  # Additional time check
+                    break  # Exit loop if time limit is exceeded
+                new_game_state = self.simulate_move(move)  # Get the new game state
+                eval, _, child_evals_per_depth = new_game_state.alpha_beta(depth - 1, alpha, beta, False, start_time, time_limit)  # Use the new game state
+                if eval > max_eval:
+                    max_eval = eval
+                    best_move = move
+                alpha = max(alpha, eval)
+                evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
+                if beta <= alpha:
+                    break  # Alpha-beta pruning
+            return max_eval, best_move, evals_per_depth
+        else:
+            min_eval = float('inf')
+            for move in move_candidates:
+                if (time.time() - start_time) > time_limit:  # Additional time check
+                    break  # Exit loop if time limit is exceeded
+                new_game_state = self.simulate_move(move)  # Get the new game state
+                eval, _, child_evals_per_depth = new_game_state.alpha_beta(depth - 1, alpha, beta, True, start_time, time_limit)  # Use the new game state
+                if eval < min_eval:
+                    min_eval = eval
+                    best_move = move
+                beta = min(beta, eval)
+                evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
+                if beta <= alpha:
+                    break  # Alpha-beta pruning
+            return min_eval, best_move, evals_per_depth
+  
+    def suggest_move(self):
+        start_time = time.time()  # Current time in seconds
+        time_limit = self.options.max_time
+
+        # Check the alpha_beta attribute of options to select the algorithm
+        if self.options.alpha_beta:
+            score, best_move, evals_per_depth = self.alpha_beta(self.options.max_depth, float('-inf'), float('inf'), True, start_time, time_limit)
+        else:
+            # Call minimax with start_time and time_limit parameters
+            score, best_move, evals_per_depth = self.minimax(self.options.max_depth, True, start_time, time_limit)
+
+        # Calculate elapsed time
+        elapsed_seconds = time.time() - start_time
+
+        # Calculate and print statistics
+        avg_depth = sum(depth * evals for depth, evals in evals_per_depth.items()) / sum(evals_per_depth.values())
+        
         print(f"Heuristic score: {score}")
         print(f"Average recursive depth: {avg_depth:0.1f}")
-        print(f"Evals per depth: ",end='')
-        for k in sorted(self.stats.evaluations_per_depth.keys()):
-            print(f"{k}:{self.stats.evaluations_per_depth[k]} ",end='')
+        print(f"Evals per depth: ", end='')
+        for k in sorted(evals_per_depth.keys()):
+            print(f"{k}:{evals_per_depth[k]} ", end='')
         print()
-        total_evals = sum(self.stats.evaluations_per_depth.values())
-        if self.stats.total_seconds > 0:
-            print(f"Eval perf.: {total_evals/self.stats.total_seconds/1000:0.1f}k/s")
+        total_evals = sum(evals_per_depth.values())
+        if elapsed_seconds > 0:
+            print(f"Eval perf.: {total_evals/elapsed_seconds/1000:0.1f}k/s")
         print(f"Elapsed time: {elapsed_seconds:0.1f}s")
-        return move
+        
+        # Return the best move
+        return best_move
+
 
     def post_move_to_broker(self, move: CoordPair):
         """Send a move to the game broker."""
@@ -827,9 +982,6 @@ def main():
     elif playmode == "comp":
         fileparam_playmode = "Player 1 = AI & Player 2 = AI\n"
 
-    # for now, only H-H can be done
-    fileparam_playmode = "Player 1 = H & Player 2 = H\n"
-
     f.write(fileparam_playmode)
     f.close()
 
@@ -844,6 +996,14 @@ def main():
 
     # create a new game
     game = Game(options=options)
+
+    # TODO: Check if this is correct, did this to try AI
+    if playmode == "attacker":
+        game.options.game_type = GameType.AttackerVsComp
+    elif playmode == "defender":
+        game.options.game_type = GameType.CompVsDefender
+    elif playmode == "comp":
+        game.options.game_type = GameType.CompVsComp
 
     # the main game loop
     while True:
