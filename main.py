@@ -464,6 +464,11 @@ class Game:
         return (True, f"{self_destruct_unit.type.name} self-destructed successfully.")
         
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
+
+        #temporary
+        self.evaluate_state()
+
+
         if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
             return (False, "")
         
@@ -506,6 +511,7 @@ class Game:
             f.close()
             return (True, "")
         return (False,"invalid move")
+
 
     def simulate_move(self, move):
         """
@@ -672,6 +678,18 @@ class Game:
         # Initialize counts for each unit type for both players
         V_P1 = T_P1 = F_P1 = P_P1 = AI_P1 = 0
         V_P2 = T_P2 = F_P2 = P_P2 = AI_P2 = 0
+
+        # Health of each unit type for both players
+        HP_P_P1 = 0 #program attacker
+        HP_F_P1 = 0 #firewall attacker
+        HP_V_P1 = 0 #virus attacker
+        HP_A_P1 = 0 #ai attacker
+
+        HP_P_P2 = 0 #program defender
+        HP_F_P2 = 0 #firewall defender
+        HP_T_P2 = 0 #tech defender
+        HP_A_P2 = 0 #ai defender
+        
         
         # Iterate over all cells in the game board to count unit types for each player
         for row in self.board:
@@ -680,12 +698,13 @@ class Game:
                     unit_type = getattr(cell, 'type', None)  # Safely get 'type' attribute
                     player = getattr(cell, 'player', None)   # Safely get 'player' attribute
                     
-                    # Check if 'type' and 'player' attributes exist and are not None
+                    # Check if 'type' and 'player' attributes exist and are not None2
                     if unit_type is not None and player is not None:
                         # Increment counts based on unit type and owner
                         if unit_type == UnitType.Virus:
                             if player == Player.Attacker:
                                 V_P1 += 1
+                                HP_V_P1 += cell.health
                             else:
                                 V_P2 += 1
                         elif unit_type == UnitType.Tech:
@@ -693,25 +712,38 @@ class Game:
                                 T_P1 += 1
                             else:
                                 T_P2 += 1
+                                HP_T_P2 += cell.health
                         elif unit_type == UnitType.Firewall:
                             if player == Player.Attacker:
                                 F_P1 += 1
+                                HP_F_P1 += cell.health
                             else:
                                 F_P2 += 1
+                                HP_F_P2 += cell.health
                         elif unit_type == UnitType.Program:
                             if player == Player.Attacker:
                                 P_P1 += 1
+                                HP_P_P1 += cell.health
                             else:
                                 P_P2 += 1
+                                HP_P_P2 += cell.health
                         elif unit_type == UnitType.AI:
                             if player == Player.Attacker:
                                 AI_P1 += 1
+                                HP_A_P1 += cell.health
                             else:
                                 AI_P2 += 1
+                                HP_A_P2 += cell.health
                     
         # Compute the heuristic value using the counts and weights for each unit type
         e0 = (3 * V_P1 + 3 * T_P1 + 3 * F_P1 + 3 * P_P1 + 9999 * AI_P1) - (3 * V_P2 + 3 * T_P2 + 3 * F_P2 + 3 * P_P2 + 9999 * AI_P2)
-        
+        print(e0)
+       # print(HP_V_P1)
+       # print(HP_T_P2)
+       # print(HP_P_P1)
+       # print(HP_P_P2)
+        e2 = e0 + (2*HP_P_P1 + 4*HP_V_P1 + 2*HP_F_P1 + 9*HP_A_P1) - (2*HP_P_P2 + 4*HP_T_P2 + 2*HP_F_P2 + 9*HP_A_P2)
+        print(e2)
         # Adjust heuristic based on the next player to move
         next_player = self.next_player  # Assuming this method returns Player.Attacker or Player.Defender
         if next_player == Player.Attacker:  
