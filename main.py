@@ -313,6 +313,20 @@ class Game:
             target.mod_health(health_delta)
             self.remove_dead(coord)
 
+    def mod_health_simulation(self, coord: Coord, health_delta: int):
+        """Modify health of unit at Coord (positive or negative delta) for simulations."""
+        target = self.get(coord)
+        if target is not None:
+            target.mod_health(health_delta)
+            # Handle unit removal without printing for simulations
+            if not target.is_alive():
+                self.set(coord, None)
+                if target.type == UnitType.AI:
+                    if target.player == Player.Attacker:
+                        self._attacker_has_ai = False
+                    else:
+                        self._defender_has_ai = False
+
     def is_valid_move(self, coords : CoordPair) -> bool:
         """Validate a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
         unit = self.get(coords.src)
@@ -507,7 +521,7 @@ class Game:
             return (True, "")
         return (False,"invalid move")
 
-    def simulate_move(self, move):
+    def simulate_move(self, coords):
         """
         Simulate applying the given move to the game state without permanently altering the state.
         This method creates and returns a new Game instance with the move applied.
@@ -515,11 +529,56 @@ class Game:
         # Clone the current game state using the clone method
         new_game = self.clone()
 
-        # Apply the move to the cloned game state's board using the perform_move method.
-        new_game.perform_move(move)
+        if not new_game.is_valid_coord(coords.src) or not new_game.is_valid_coord(coords.dst):
+            return new_game  # Return the unaltered game state
+
+        # Validate and perform a move expressed as a CoordPair
+        if new_game.is_valid_move(coords):
+            new_game.set(coords.dst, new_game.get(coords.src))
+            new_game.set(coords.src, None)
+        # If the dst tile is an adversary and is adjacent, simulate an attack
+        elif new_game.is_tile_adjacent(coords) and new_game.is_target_adversary(coords):
+            unit = new_game.get(coords.src)
+            target_unit = new_game.get(coords.dst)
+            dmgToTargetUnit = unit.damage_amount(target_unit)
+            dmgToOwnUnit = target_unit.damage_amount(unit)
+            new_game.mod_health_simulation(coords.src, -abs(dmgToOwnUnit))
+            new_game.mod_health_simulation(coords.dst, -abs(dmgToTargetUnit))
+        # If the dst tile is an ally and is adjacent, simulate a repair
+        elif new_game.is_tile_adjacent(coords) and new_game.is_target_ally(coords):
+            unit = new_game.get(coords.src)
+            target_unit = new_game.get(coords.dst)
+            healToTargetUnit = unit.repair_amount(target_unit)
+            new_game.mod_health_simulation(coords.dst, +abs(healToTargetUnit))
+        elif new_game.is_src_tile_dst(coords):
+            self_destruct_unit = new_game.get(coords.src)
+            
+            # List of all possible surrounding coordinates
+            surrounding_coords = [
+                Coord(row=coords.src.row - 1, col=coords.src.col - 1),  # top-left
+                Coord(row=coords.src.row - 1, col=coords.src.col),      # top
+                Coord(row=coords.src.row - 1, col=coords.src.col + 1),  # top-right
+                Coord(row=coords.src.row, col=coords.src.col - 1),      # left
+                Coord(row=coords.src.row, col=coords.src.col + 1),      # right
+                Coord(row=coords.src.row + 1, col=coords.src.col - 1),  # bottom-left
+                Coord(row=coords.src.row + 1, col=coords.src.col),      # bottom
+                Coord(row=coords.src.row + 1, col=coords.src.col + 1)   # bottom-right
+            ]
+
+            for sur_coord in surrounding_coords:
+                if new_game.is_valid_coord(sur_coord):
+                    target_unit = new_game.get(sur_coord)
+                    if target_unit:
+                        # Damage amount to the target unit (you may adjust the damage value)
+                        damage_to_target = 2
+                        # Modify the health of the target unit
+                        new_game.mod_health_simulation(sur_coord, -abs(damage_to_target))
+            
+            # Reduce the health of the self-destructing unit to 0
+            new_game.mod_health_simulation(coords.src, -abs(self_destruct_unit.health))
 
         return new_game  # Return the new game state with the simulated move
-
+    
     def next_turn(self):
         """Transitions game to the next turn."""
         self.next_player = self.next_player.next()
@@ -645,16 +704,21 @@ class Game:
 
     def move_candidates(self) -> Iterable[CoordPair]:
         """Generate valid move candidates for the next player."""
+        BOARD_HEIGHT = 5  # Define the height of your board
+        BOARD_WIDTH = 5   # Define the width of your board
+        
         move = CoordPair()
-        for (src,_) in self.player_units(self.next_player):
+        for (src, _) in self.player_units(self.next_player):
             move.src = src
             for dst in src.iter_adjacent():
-                move.dst = dst
-                #print(f'move: {move}')
-                if self.is_valid_move(move):
-                    yield move.clone()
+                # Check if the destination coordinates are within the board
+                if 0 <= dst.row < BOARD_HEIGHT and 0 <= dst.col < BOARD_WIDTH:
+                    move.dst = dst
+                    if self.is_valid_move(move):
+                        yield move.clone()
             move.dst = src
             yield move.clone()
+
 
     def random_move(self) -> Tuple[int, CoordPair | None, float]:
         """Returns a random move."""
@@ -793,7 +857,7 @@ class Game:
                 if beta <= alpha:
                     break  # Alpha-beta pruning
             return min_eval, best_move, evals_per_depth
-  
+
     def suggest_move(self):
         start_time = time.time()  # Current time in seconds
         time_limit = self.options.max_time
@@ -824,6 +888,7 @@ class Game:
         
         # Return the best move
         return best_move
+
 
 
     def post_move_to_broker(self, move: CoordPair):
