@@ -494,9 +494,10 @@ class Game:
             return (True, "")
         #if the dst tile is an adversary and is adjacent, perform an attack
         elif self.is_tile_adjacent(coords) and self.is_target_adversary(coords):
-            print('Attacking adversary')
+            print('\nAttacking adversary')
             self.attack_target_adversary(coords, self.get(coords.src), self.get(coords.dst))
-
+            print('\n')
+            
             # write to file
             f.write(f"\nAttack from {coords.src} to {coords.dst}\n")
             f.close()
@@ -732,7 +733,7 @@ class Game:
         else:
             return (0, None, 0)
 
-    def evaluate_state(self) -> float:
+    def evaluate_state(self, evaluator: Player) -> float:
         """
         Evaluates the game state using a heuristic that considers the count and type of units for each player.
         """
@@ -800,45 +801,47 @@ class Game:
         e0 = (3 * V_P1 + 3 * T_P1 + 3 * F_P1 + 3 * P_P1 + 9999 * AI_P1) - (3 * V_P2 + 3 * T_P2 + 3 * F_P2 + 3 * P_P2 + 9999 * AI_P2)  
         e2 = (2*HP_P_P1 + 4*HP_V_P1 + 2*HP_F_P1 + 9999*HP_A_P1) - (2*HP_P_P2 + 4*HP_T_P2 + 2*HP_F_P2 + 9999*HP_A_P2)
 
-        e2 = -e2  # Invert the heuristic score
+        if evaluator == Player.Defender:  # Invert Perspective for Heuristic Score
+            e2 = -e2 
 
         # To use e2, simply replace e0 with e2 below:
         return float(e2)
 
-    def minimax(self, depth, maximizing_player, start_time, time_limit):
+    def minimax(self, depth, evaluator: Player, maximizing_player, start_time, time_limit):
         if depth == 0 or (time.time() - start_time) > time_limit or self.is_finished():
-            return self.evaluate_state(), None, {depth: 1}  # Placeholder for Heuristic
+            return self.evaluate_state(evaluator), None, {depth: 1}
 
         move_candidates = list(self.move_candidates())
         best_move = None
         evals_per_depth = {depth: 0}
+
         if maximizing_player:
             max_eval = float('-inf')
             for move in move_candidates:
                 new_game_state = self.simulate_move(move)
-                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, False, start_time, time_limit)  # Use the new game state
+                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, evaluator, False, start_time, time_limit)  # Including evaluator as a parameter
                 if eval > max_eval:
                     max_eval = eval
                     best_move = move
                 evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
             return max_eval, best_move, evals_per_depth
+
         else:
             min_eval = float('inf')
             for move in move_candidates:
                 new_game_state = self.simulate_move(move)
-                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, True, start_time, time_limit)  # Use the new game state
+                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, evaluator, True, start_time, time_limit)  # Including evaluator as a parameter
                 if eval < min_eval:
                     min_eval = eval
                     best_move = move
                 evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
             return min_eval, best_move, evals_per_depth
 
-
-    def alpha_beta(self, depth, alpha, beta, maximizing_player, start_time, time_limit):
+    def alpha_beta(self, depth, evaluator: Player, alpha, beta, maximizing_player, start_time, time_limit):
         # Base Case: depth reached or time limit exceeded
         current_time = time.time()
         if depth == 0 or (current_time - start_time) > time_limit or self.is_finished():
-            return self.evaluate_state(), None, {depth: 1}
+            return self.evaluate_state(evaluator), None, {depth: 1}
         
         move_candidates = list(self.move_candidates())
         best_move = None
@@ -850,7 +853,7 @@ class Game:
                 if (time.time() - start_time) > time_limit:
                     break  # Exit loop if time limit is exceeded
                 new_game_state = self.simulate_move(move)  # Get the new game state
-                eval, _, child_evals_per_depth = new_game_state.alpha_beta(depth - 1, alpha, beta, False, start_time, time_limit)  # Use the new game state
+                eval, _, child_evals_per_depth = new_game_state.alpha_beta(depth - 1, evaluator, alpha, beta, False, start_time, time_limit)  # Use the new game state and pass evaluator
                 if eval > max_eval:
                     max_eval = eval
                     best_move = move
@@ -865,7 +868,7 @@ class Game:
                 if (time.time() - start_time) > time_limit:
                     break  # Exit loop if time limit is exceeded
                 new_game_state = self.simulate_move(move)  # Get the new game state
-                eval, _, child_evals_per_depth = new_game_state.alpha_beta(depth - 1, alpha, beta, True, start_time, time_limit)  # Use the new game state
+                eval, _, child_evals_per_depth = new_game_state.alpha_beta(depth - 1, evaluator, alpha, beta, True, start_time, time_limit)  # Use the new game state and pass evaluator
                 if eval < min_eval:
                     min_eval = eval
                     best_move = move
@@ -875,16 +878,19 @@ class Game:
                     break  # Alpha-beta pruning
             return min_eval, best_move, evals_per_depth
 
+
     def suggest_move(self):
         start_time = time.time()  # Current time in seconds
         time_limit = self.options.max_time
 
+        current_player = self.next_player
+
         # Check the alpha_beta attribute of options to select the algorithm
         if self.options.alpha_beta:
-            score, best_move, evals_per_depth = self.alpha_beta(self.options.max_depth, float('-inf'), float('inf'), True, start_time, time_limit)
+            score, best_move, evals_per_depth = self.alpha_beta(self.options.max_depth, current_player, float('-inf'), float('inf'), True, start_time, time_limit)  
         else:
             # Call minimax with start_time and time_limit parameters
-            score, best_move, evals_per_depth = self.minimax(self.options.max_depth, True, start_time, time_limit)
+            score, best_move, evals_per_depth = self.minimax(self.options.max_depth, current_player, True, start_time, time_limit)
 
         # Calculate elapsed time
         elapsed_seconds = time.time() - start_time
