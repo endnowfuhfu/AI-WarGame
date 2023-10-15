@@ -577,6 +577,9 @@ class Game:
             # Reduce the health of the self-destructing unit to 0
             new_game.mod_health_simulation(coords.src, -abs(self_destruct_unit.health))
 
+        # update turn ctr & next player
+        new_game.next_turn()
+
         return new_game  # Return the new game state with the simulated move
     
     def next_turn(self):
@@ -714,7 +717,7 @@ class Game:
                 # Check if the destination coordinates are within the board
                 if 0 <= dst.row < BOARD_HEIGHT and 0 <= dst.col < BOARD_WIDTH:
                     move.dst = dst
-                    if self.is_valid_move(move):
+                    if self.is_valid_move(move) or (self.board[dst.row][dst.col] is not None and self.is_target_adversary(move)):
                         yield move.clone()
             move.dst = src
             yield move.clone()
@@ -734,7 +737,6 @@ class Game:
         Evaluates the game state using a heuristic that considers the count and type of units for each player.
         """
 
-        print(self)
         # Initialize counts for each unit type for both players
         V_P1 = T_P1 = F_P1 = P_P1 = AI_P1 = 0
         V_P2 = T_P2 = F_P2 = P_P2 = AI_P2 = 0
@@ -796,18 +798,10 @@ class Game:
                     
         # Compute the heuristic value using the counts and weights for each unit type
         e0 = (3 * V_P1 + 3 * T_P1 + 3 * F_P1 + 3 * P_P1 + 9999 * AI_P1) - (3 * V_P2 + 3 * T_P2 + 3 * F_P2 + 3 * P_P2 + 9999 * AI_P2)  
-        e2 = (2*HP_P_P1 + 4*HP_V_P1 + 2*HP_F_P1 + 9*HP_A_P1) - (2*HP_P_P2 + 4*HP_T_P2 + 2*HP_F_P2 + 9*HP_A_P2)
-        
-        # Adjust heuristic based on the next player to move
-        next_player = self.next_player  # Assuming this method returns Player.Attacker or Player.Defender
-        if next_player == Player.Attacker:  
-            # If the next player is the attacker (Player 1), a high heuristic should be good for Player 1
-            pass  # In this case, e0 is already in the perspective of Player 1
-        elif next_player == Player.Defender:
-            # If the next player is the defender (Player 2), a high heuristic should be good for Player 2
-            e2 *= -1  # Invert the perspective to be from the point of view of Player 2
+        e2 = (2*HP_P_P1 + 4*HP_V_P1 + 2*HP_F_P1 + 9999*HP_A_P1) - (2*HP_P_P2 + 4*HP_T_P2 + 2*HP_F_P2 + 9999*HP_A_P2)
 
-        print(e2)
+        e2 = -e2  # Invert the heuristic score
+
         # To use e2, simply replace e0 with e2 below:
         return float(e2)
 
@@ -826,8 +820,6 @@ class Game:
                 if eval > max_eval:
                     max_eval = eval
                     best_move = move
-                    # Debug Print
-               #     print(f"MAXIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
                 evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
             return max_eval, best_move, evals_per_depth
         else:
@@ -838,8 +830,6 @@ class Game:
                 if eval < min_eval:
                     min_eval = eval
                     best_move = move
-                    # Debug Print
-                 #   print(f"MINIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
                 evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
             return min_eval, best_move, evals_per_depth
 
@@ -848,7 +838,7 @@ class Game:
         # Base Case: depth reached or time limit exceeded
         current_time = time.time()
         if depth == 0 or (current_time - start_time) > time_limit or self.is_finished():
-            return self.evaluate_state(), None, {depth: 1}  # Adjusted Placeholder for Heuristic
+            return self.evaluate_state(), None, {depth: 1}
         
         move_candidates = list(self.move_candidates())
         best_move = None
@@ -857,15 +847,13 @@ class Game:
         if maximizing_player:
             max_eval = float('-inf')
             for move in move_candidates:
-                if (time.time() - start_time) > time_limit:  # Additional time check
+                if (time.time() - start_time) > time_limit:
                     break  # Exit loop if time limit is exceeded
                 new_game_state = self.simulate_move(move)  # Get the new game state
                 eval, _, child_evals_per_depth = new_game_state.alpha_beta(depth - 1, alpha, beta, False, start_time, time_limit)  # Use the new game state
                 if eval > max_eval:
                     max_eval = eval
                     best_move = move
-                    # Debug Print
-                   # print(f"MAXIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
                 alpha = max(alpha, eval)
                 evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
                 if beta <= alpha:
@@ -874,15 +862,13 @@ class Game:
         else:
             min_eval = float('inf')
             for move in move_candidates:
-                if (time.time() - start_time) > time_limit:  # Additional time check
+                if (time.time() - start_time) > time_limit:
                     break  # Exit loop if time limit is exceeded
                 new_game_state = self.simulate_move(move)  # Get the new game state
                 eval, _, child_evals_per_depth = new_game_state.alpha_beta(depth - 1, alpha, beta, True, start_time, time_limit)  # Use the new game state
                 if eval < min_eval:
                     min_eval = eval
                     best_move = move
-                    # Debug Print
-                   # print(f"MINIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
                 beta = min(beta, eval)
                 evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
                 if beta <= alpha:
