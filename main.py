@@ -733,6 +733,8 @@ class Game:
         """
         Evaluates the game state using a heuristic that considers the count and type of units for each player.
         """
+
+        print(self)
         # Initialize counts for each unit type for both players
         V_P1 = T_P1 = F_P1 = P_P1 = AI_P1 = 0
         V_P2 = T_P2 = F_P2 = P_P2 = AI_P2 = 0
@@ -794,8 +796,8 @@ class Game:
                     
         # Compute the heuristic value using the counts and weights for each unit type
         e0 = (3 * V_P1 + 3 * T_P1 + 3 * F_P1 + 3 * P_P1 + 9999 * AI_P1) - (3 * V_P2 + 3 * T_P2 + 3 * F_P2 + 3 * P_P2 + 9999 * AI_P2)  
-        e2 = e0 + (2*HP_P_P1 + 4*HP_V_P1 + 2*HP_F_P1 + 9*HP_A_P1) - (2*HP_P_P2 + 4*HP_T_P2 + 2*HP_F_P2 + 9*HP_A_P2)
-
+        e2 = (2*HP_P_P1 + 4*HP_V_P1 + 2*HP_F_P1 + 9*HP_A_P1) - (2*HP_P_P2 + 4*HP_T_P2 + 2*HP_F_P2 + 9*HP_A_P2)
+        
         # Adjust heuristic based on the next player to move
         next_player = self.next_player  # Assuming this method returns Player.Attacker or Player.Defender
         if next_player == Player.Attacker:  
@@ -803,10 +805,11 @@ class Game:
             pass  # In this case, e0 is already in the perspective of Player 1
         elif next_player == Player.Defender:
             # If the next player is the defender (Player 2), a high heuristic should be good for Player 2
-            e0 *= -1  # Invert the perspective to be from the point of view of Player 2
+            e2 *= -1  # Invert the perspective to be from the point of view of Player 2
 
+        print(e2)
         # To use e2, simply replace e0 with e2 below:
-        return float(e0)
+        return float(e2)
 
     def minimax(self, depth, maximizing_player, start_time, time_limit):
         if depth == 0 or (time.time() - start_time) > time_limit:
@@ -819,24 +822,24 @@ class Game:
             max_eval = float('-inf')
             for move in move_candidates:
                 new_game_state = self.simulate_move(move)
-                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, False)  # Use the new game state
+                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, False, start_time, time_limit)  # Use the new game state
                 if eval > max_eval:
                     max_eval = eval
                     best_move = move
                     # Debug Print
-                    print(f"MAXIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
+               #     print(f"MAXIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
                 evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
             return max_eval, best_move, evals_per_depth
         else:
             min_eval = float('inf')
             for move in move_candidates:
                 new_game_state = self.simulate_move(move)
-                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, True)  # Use the new game state
+                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, True, start_time, time_limit)  # Use the new game state
                 if eval < min_eval:
                     min_eval = eval
                     best_move = move
                     # Debug Print
-                    print(f"MINIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
+                 #   print(f"MINIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
                 evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
             return min_eval, best_move, evals_per_depth
 
@@ -862,7 +865,7 @@ class Game:
                     max_eval = eval
                     best_move = move
                     # Debug Print
-                    print(f"MAXIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
+                   # print(f"MAXIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
                 alpha = max(alpha, eval)
                 evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
                 if beta <= alpha:
@@ -879,7 +882,7 @@ class Game:
                     min_eval = eval
                     best_move = move
                     # Debug Print
-                    print(f"MINIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
+                   # print(f"MINIMIZER: New best move: {best_move}, Score: {eval}, Depth: {depth}")
                 beta = min(beta, eval)
                 evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
                 if beta <= alpha:
@@ -990,9 +993,9 @@ def read_is_alphabeta() -> str:
     while True:
         bool_input = input('Enter an algorithm: alpha-beta (T) or minimax (F): ')
         if bool_input.upper() == 'T':
-            return 'true'
+            return True
         elif bool_input.upper() == 'F':
-            return 'false'
+            return False
         else:
             print('Invalid input. Please put T for alpha-beta and F for minimax.')
 
@@ -1053,7 +1056,8 @@ def main():
 
     is_alphabeta = read_is_alphabeta() #NOT USED IN D1
     playmode = read_playmodes() #NOT USED IN D1
-
+    options.alpha_beta = is_alphabeta
+    
     # Create Output file gameTrace-<b>-<t>-<m>.txt
     global filename
     filename = "gameTrace-{}-{}-{}.txt".format(is_alphabeta, max_time, max_turns)
@@ -1098,6 +1102,8 @@ def main():
     elif playmode == "comp":
         game.options.game_type = GameType.CompVsComp
 
+
+  
     # the main game loop
     while True:
         print()
