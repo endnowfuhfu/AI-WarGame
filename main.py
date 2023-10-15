@@ -812,7 +812,7 @@ class Game:
         return float(e2)
 
     def minimax(self, depth, maximizing_player, start_time, time_limit):
-        if depth == 0 or (time.time() - start_time) > time_limit:
+        if depth == 0 or (time.time() - start_time) > time_limit or self.is_finished():
             return self.evaluate_state(), None, {depth: 1}  # Placeholder for Heuristic
 
         move_candidates = list(self.move_candidates())
@@ -847,7 +847,7 @@ class Game:
     def alpha_beta(self, depth, alpha, beta, maximizing_player, start_time, time_limit):
         # Base Case: depth reached or time limit exceeded
         current_time = time.time()
-        if depth == 0 or (current_time - start_time) > time_limit:
+        if depth == 0 or (current_time - start_time) > time_limit or self.is_finished():
             return self.evaluate_state(), None, {depth: 1}  # Adjusted Placeholder for Heuristic
         
         move_candidates = list(self.move_candidates())
