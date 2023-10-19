@@ -648,6 +648,137 @@ class Game:
             move.dst = src
             yield move.clone()
 
+    def is_initial_board(self) -> bool:
+
+        initial_board = [
+            [Unit(player=Player.Defender, type=UnitType.AI, health=9), Unit(player=Player.Defender, type=UnitType.Tech, health=9), Unit(player=Player.Defender, type=UnitType.Firewall, health=9), None, None],
+            [Unit(player=Player.Defender, type=UnitType.Tech, health=9), Unit(player=Player.Defender, type=UnitType.Program, health=9), None, None, None],
+            [Unit(player=Player.Defender, type=UnitType.Firewall, health=9), None, None, None, Unit(player=Player.Attacker, type=UnitType.Program, health=9)],
+            [None, None, None, Unit(player=Player.Attacker, type=UnitType.Firewall, health=9), Unit(player=Player.Attacker, type=UnitType.Virus, health=9)],
+            [None, None, Unit(player=Player.Attacker, type=UnitType.Program, health=9), Unit(player=Player.Attacker, type=UnitType.Virus, health=9), Unit(player=Player.Attacker, type=UnitType.AI, health=9)]
+        ]
+
+        # Check if the current board matches the initial board
+        for row in range(len(initial_board)):
+            for col in range(len(initial_board[0])):
+                initial_unit = initial_board[row][col]
+                current_unit = self.get(Coord(row, col))
+                if initial_unit is not None and (current_unit is None or initial_unit != current_unit):
+                    return False
+
+        return True
+
+    def get_surrounding_enemies(self, coord : Coord) -> Iterable[Unit]:
+        adjU = self.get(Coord(coord.row-1,coord.col)) #tile on top of selected unit
+        adjR = self.get(Coord(coord.row,coord.col+1)) #tile on right of selected unit
+        adjD = self.get(Coord(coord.row+1,coord.col)) #tile on bottom of selected unit
+        adjL = self.get(Coord(coord.row,coord.col-1)) #tile on left of selected unit
+
+        unit_list = [adjU, adjR, adjD, adjL]
+        enemies_list = []
+
+        for unit in unit_list:
+            if unit is not None and unit.player != self.next_player:
+                enemies_list.append(unit)
+
+        return enemies_list
+
+    def get_surrounding_allies(self, coord : Coord) -> Iterable[Unit]:
+        adjU = self.get(Coord(coord.row-1,coord.col)) #tile on top of selected unit
+        adjR = self.get(Coord(coord.row,coord.col+1)) #tile on right of selected unit
+        adjD = self.get(Coord(coord.row+1,coord.col)) #tile on bottom of selected unit
+        adjL = self.get(Coord(coord.row,coord.col-1)) #tile on left of selected unit
+
+        unit_list = [adjU, adjR, adjD, adjL]
+        allies_list = []
+
+        for unit in unit_list:
+            if unit is not None and unit.player == self.next_player:
+                allies_list.append(unit)
+
+        return allies_list
+    
+    def calculate_program_net_worth(self, unit: Unit, enemies : Iterable[Unit]) -> int:
+        score = 0
+        for enemy in enemies:
+            if enemy.type.name == 'AI':
+                if unit.health >= enemy.health:
+                    score += 10
+            elif enemy.type.name == 'Program':
+                if unit.health >= enemy.health:
+                    score += 5
+            elif enemy.type.name == 'Tech':
+                if unit.health >= enemy.health:
+                    score += 10
+        return score
+    
+    
+    def calculate_virus_net_worth(self, unit: Unit, enemies : Iterable[Unit]) -> int:
+        score = 0
+        for enemy in enemies:
+            # a Virus can destroy the opponent's AI in one move
+            if enemy.type.name == 'AI':
+                score += 50
+            # a Virus inflicts 6 pts of damage to a Program in one move
+            elif enemy.type.name == 'Program':
+                score += 15
+            # we want to destroy Techs as they can repair defensive units
+            elif enemy.type.name == 'Tech':
+                score += 30
+        return score
+    
+            
+    def calculate_ai_net_worth(self, unit: Unit, enemies : Iterable[Unit]) -> int:
+        score = 0
+        for enemy in enemies:
+            if enemy.type.name == 'AI':
+                if unit.health <= enemy.health:
+                    score -= 50
+            elif enemy.type.name == 'Program':
+                if unit.health <= enemy.health:
+                    score -= 50
+            elif enemy.type.name == 'Firewall':
+                score -= 5
+            elif enemy.type.name == 'Tech':
+                if unit.health <= enemy.health:
+                    score -= 50
+        return score
+    
+    def calculate_tech_net_worth(self, unit: Unit, enemies : Iterable[Unit]) -> int:
+        score = 0
+        for enemy in enemies:
+            if enemy.type.name == 'AI':
+                if unit.health >= enemy.health:
+                    score -= 50
+            elif enemy.type.name == 'Program':
+                if unit.health <= enemy.health:
+                    score -= 50
+        return score
+
+    
+    # Calculate net worth of each move and number of surrounding techs, AI
+    def heuristic_two(game: Game) -> int:
+
+        total = 0
+       
+        for (src,_) in game.player_units(game.next_player):
+            current_unit = game.get(src)
+            print(src,_)
+
+            if current_unit is not None:
+                enemies = game.get_surrounding_enemies(src)
+
+                if current_unit.type.name == 'Program':
+                    total += game.calculate_program_net_worth(current_unit, enemies)
+                elif current_unit.type.name == 'Virus':
+                    total += game.calculate_virus_net_worth(current_unit, enemies)
+                elif current_unit.type.name == 'AI':
+                    total += game.calculate_virus_net_worth(current_unit, enemies)
+                elif current_unit.type.name == 'Tech':
+                    total += game.calculate_tech_net_worth(current_unit, enemies)
+
+        return total
+
     def random_move(self) -> Tuple[int, CoordPair | None, float]:
         """Returns a random move."""
         move_candidates = list(self.move_candidates())
@@ -848,6 +979,7 @@ def main():
 
     # create a new game
     game = Game(options=options)
+    game.heuristic_two()
 
     # the main game loop
     while True:
