@@ -246,6 +246,7 @@ class Game:
     board: list[list[Unit | None]] = field(default_factory=list)
     next_player: Player = Player.Attacker
     turns_played : int = 0
+    real_turn: int = 0
     options: Options = field(default_factory=Options)
     stats: Stats = field(default_factory=Stats)
     _attacker_has_ai : bool = True
@@ -589,6 +590,8 @@ class Game:
         self.turns_played += 1
 
     def to_string(self) -> str:
+
+        self.real_turn = self.turns_played
         """Pretty text representation of the game."""
         dim = self.options.dim
         output = ""
@@ -718,7 +721,7 @@ class Game:
                 # Check if the destination coordinates are within the board
                 if 0 <= dst.row < BOARD_HEIGHT and 0 <= dst.col < BOARD_WIDTH:
                     move.dst = dst
-                    if self.is_valid_move(move) or (self.board[dst.row][dst.col] is not None and self.is_target_adversary(move)):
+                    if self.is_valid_move(move) or (self.board[dst.row][dst.col] is not None and self.is_target_adversary(move)) or (self.board[dst.row][dst.col] is not None and self.repairable(move, self.get(move.src), self.get(move.dst))):
                         yield move.clone()
             move.dst = src
             yield move.clone()
@@ -737,7 +740,6 @@ class Game:
         """
         Evaluates the game state using a heuristic that considers the count and type of units for each player.
         """
-
         # Initialize counts for each unit type for both players
         V_P1 = T_P1 = F_P1 = P_P1 = AI_P1 = 0
         V_P2 = T_P2 = F_P2 = P_P2 = AI_P2 = 0
@@ -798,8 +800,13 @@ class Game:
                                 HP_A_P2 += cell.health
                     
         # Compute the heuristic value using the counts and weights for each unit type
-        e0 = (3 * V_P1 + 3 * T_P1 + 3 * F_P1 + 3 * P_P1 + 9999 * AI_P1) - (3 * V_P2 + 3 * T_P2 + 3 * F_P2 + 3 * P_P2 + 9999 * AI_P2)  
-        e2 = (2*HP_P_P1 + 4*HP_V_P1 + 2*HP_F_P1 + 9999*HP_A_P1) - (2*HP_P_P2 + 4*HP_T_P2 + 2*HP_F_P2 + 9999*HP_A_P2)
+        e0 = (3 * V_P1 + 3 * T_P1 + 3 * F_P1 + 3 * P_P1 + 9999 * AI_P1) - (3 * V_P2 + 3 * T_P2 + 3 * F_P2 + 3 * P_P2 + 9999 * AI_P2)
+
+        # health of each units + turn timer
+        e2 = (2*HP_P_P1 + 4*HP_V_P1 + 2*HP_F_P1 + 10*HP_A_P1) - (2*HP_P_P2 + 4*HP_T_P2 + 2*HP_F_P2 + 10*HP_A_P2) - (50/(self.options.max_turns - self.real_turn))
+        
+        
+    
 
         if evaluator == Player.Defender:  # Invert Perspective for Heuristic Score
             e2 = -e2 
