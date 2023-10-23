@@ -726,6 +726,102 @@ class Game:
             move.dst = src
             yield move.clone()
 
+    def get_enemy_coord(self, type: UnitType) -> Coord:
+        for row in range(self.options.dim):
+            for col in range(self.options.dim):
+                coord = Coord(row, col)
+                unit = self.get(coord)
+                
+                if unit is not None and unit.type == type and unit.player != self.next_player:
+                    return  Coord(row, col)
+
+    #Distance = |x1 - x2| + |y1 - y2|
+    def get_manhattan_distance(self, coord: Coord, type: UnitType) -> float:
+        x1 = coord.row
+        y1 = coord.col
+
+        x2 = 0
+        y2 = 0
+        enemy_coord = None
+        if type == UnitType.AI:
+            enemy_coord = self.get_enemy_coord(type)
+        elif type == UnitType.Virus:
+            enemy_coord = self.get_enemy_coord(type)
+
+        if enemy_coord is not None:
+            x2 = enemy_coord.row
+            y2 = enemy_coord.col
+            return abs(x1-x2) + abs(y1-y2)
+        
+        return 0
+
+
+    def heuristic_one(self) -> float:
+        hp_a_virus = 0
+        hp_a_program = 0
+        hp_d_program = 0
+        hp_d_tech = 0
+        hp_a_ai = 0
+        hp_d_ai = 0
+        hp_a_firewall = 0
+        hp_d_firewall = 0
+
+        virus_weight = 6
+        program_weight = 4
+        tech_weight = 6
+        firewall_weight = 3
+        ai_weight = 9999
+
+        a_virus_to_enemy_ai_distance = 0
+        a_program_to_enemy_ai_distance = 0
+        d_program_to_enemy_ai_distance = 0
+        d_tech_to_enemy_virus_distance = 0
+        a_firewall_to_enemy_ai_distance = 0
+        d_firewall_to_enemy_ai_distance = 0
+
+        score = 0
+
+        for row in range(self.options.dim):
+            for col in range(self.options.dim):
+                coord = Coord(row, col)
+                unit = self.get(coord)
+                
+                if unit is not None and coord is not None:
+                    if unit.type == UnitType.Virus and unit.player == Player.Attacker:
+                            a_virus_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
+                            hp_a_virus += unit.health
+                    if unit.type == UnitType.Program: 
+                        if unit.player == Player.Attacker:
+                            a_program_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
+                            hp_a_program += unit.health
+                        else:
+                            d_program_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
+                            hp_d_program += unit.health
+                    if unit.type == UnitType.Tech and unit.player == Player.Defender:
+                        hp_d_tech += unit.health
+                    if unit.type == UnitType.AI:
+                        if unit.player == Player.Attacker:
+                            hp_a_ai += unit.health
+                        else:
+                            hp_d_ai += unit.health
+                    if unit.type == UnitType.Firewall:
+                        if unit.player == Player.Attacker:
+                            hp_a_firewall += unit.health
+                            a_firewall_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
+                        else:
+                            hp_d_firewall += unit.health
+                            d_firewall_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
+
+
+
+        attacker_score = (virus_weight * hp_a_virus + (5*(self.options.dim * 2 - a_virus_to_enemy_ai_distance)) + 
+         (program_weight * hp_a_program + (4*(self.options.dim * 2 - (a_program_to_enemy_ai_distance)))) + (hp_a_ai * ai_weight) + (hp_a_firewall * firewall_weight + (4*(self.options.dim * 2 - (a_firewall_to_enemy_ai_distance)))))
+        
+        defender_score =  (tech_weight * hp_d_tech + (5*(self.options.dim * 2 - d_tech_to_enemy_virus_distance))) + (hp_d_ai * ai_weight) + (program_weight * hp_d_program + (5*(self.options.dim * 2 - (d_program_to_enemy_ai_distance)))) + (hp_d_firewall * firewall_weight + (4*(self.options.dim * 2 - (a_firewall_to_enemy_ai_distance))))
+
+        score = attacker_score - defender_score
+
+        return score
 
     def random_move(self) -> Tuple[int, CoordPair | None, float]:
         """Returns a random move."""
@@ -754,6 +850,7 @@ class Game:
         HP_F_P2 = 0 #firewall defender
         HP_T_P2 = 0 #tech defender
         HP_A_P2 = 0 #ai defender
+
         
         # Iterate over all cells in the game board to count unit types for each player
         for row in self.board:
@@ -797,7 +894,7 @@ class Game:
                                 HP_A_P1 += cell.health
                             else:
                                 AI_P2 += 1
-                                HP_A_P2 += cell.health
+                                HP_A_P2 += cell.health 
                     
         # Compute the heuristic value using the counts and weights for each unit type
         e0 = (3 * V_P1 + 3 * T_P1 + 3 * F_P1 + 3 * P_P1 + 9999 * AI_P1) - (3 * V_P2 + 3 * T_P2 + 3 * F_P2 + 3 * P_P2 + 9999 * AI_P2)
@@ -808,11 +905,12 @@ class Game:
         
     
 
+        #e1 = self.heuristic_one()
         if evaluator == Player.Defender:  # Invert Perspective for Heuristic Score
-            e2 = -e2 
+            e0 = -e0
 
         # To use e2, simply replace e0 with e2 below:
-        return float(e2)
+        return float(e0)
 
     def minimax(self, depth, evaluator: Player, maximizing_player, start_time, time_limit):
         if depth == 0 or (time.time() - start_time) > time_limit or self.is_finished():
@@ -1102,7 +1200,6 @@ def main():
         game.options.game_type = GameType.CompVsComp
 
 
-  
     # the main game loop
     while True:
         print()
