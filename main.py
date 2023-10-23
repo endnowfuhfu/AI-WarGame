@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import Enum
 from dataclasses import dataclass, field
 from time import sleep
+import time
 from typing import Tuple, TypeVar, Type, Iterable, ClassVar
 import random
 
@@ -312,6 +313,20 @@ class Game:
             target.mod_health(health_delta)
             self.remove_dead(coord)
 
+    def mod_health_simulation(self, coord: Coord, health_delta: int):
+        """Modify health of unit at Coord (positive or negative delta) for simulations."""
+        target = self.get(coord)
+        if target is not None:
+            target.mod_health(health_delta)
+            # Handle unit removal without printing for simulations
+            if not target.is_alive():
+                self.set(coord, None)
+                if target.type == UnitType.AI:
+                    if target.player == Player.Attacker:
+                        self._attacker_has_ai = False
+                    else:
+                        self._defender_has_ai = False
+
     def is_valid_move(self, coords : CoordPair) -> bool:
         """Validate a move expressed as a CoordPair. TODO: WRITE MISSING CODE!!!"""
         unit = self.get(coords.src)
@@ -455,18 +470,12 @@ class Game:
                     self.mod_health(sur_coord, -abs(damage_to_target))
                     # Print out the damage message
                     print(f'{self_destruct_unit.player.name} DAMAGE {self_destruct_unit.type.name} TO {target_unit.type.name}: {-abs(damage_to_target)}')
-                    
-                    # Check if the health of the target unit is 0 or below and remove the unit
-                    if target_unit.health <= 0:
-                        self.set(sur_coord, None)
         
         # Reduce the health of the self-destructing unit to 0
         self.mod_health(coord, -abs(self.get(coord).health))
 
         # After performing the self-destruction, if successful
         return (True, f"{self_destruct_unit.type.name} self-destructed successfully.")
-
-
         
     def perform_move(self, coords : CoordPair) -> Tuple[bool,str]:
         if not self.is_valid_coord(coords.src) or not self.is_valid_coord(coords.dst):
@@ -485,9 +494,10 @@ class Game:
             return (True, "")
         #if the dst tile is an adversary and is adjacent, perform an attack
         elif self.is_tile_adjacent(coords) and self.is_target_adversary(coords):
-            print('Attacking adversary')
+            print('\nAttacking adversary')
             self.attack_target_adversary(coords, self.get(coords.src), self.get(coords.dst))
-
+            print('\n')
+            
             # write to file
             f.write(f"\nAttack from {coords.src} to {coords.dst}\n")
             f.close()
@@ -512,6 +522,67 @@ class Game:
             return (True, "")
         return (False,"invalid move")
 
+    def simulate_move(self, coords):
+        """
+        Simulate applying the given move to the game state without permanently altering the state.
+        This method creates and returns a new Game instance with the move applied.
+        """
+        # Clone the current game state using the clone method
+        new_game = self.clone()
+
+        if not new_game.is_valid_coord(coords.src) or not new_game.is_valid_coord(coords.dst):
+            return new_game  # Return the unaltered game state
+
+        # Validate and perform a move expressed as a CoordPair
+        if new_game.is_valid_move(coords):
+            new_game.set(coords.dst, new_game.get(coords.src))
+            new_game.set(coords.src, None)
+        # If the dst tile is an adversary and is adjacent, simulate an attack
+        elif new_game.is_tile_adjacent(coords) and new_game.is_target_adversary(coords):
+            unit = new_game.get(coords.src)
+            target_unit = new_game.get(coords.dst)
+            dmgToTargetUnit = unit.damage_amount(target_unit)
+            dmgToOwnUnit = target_unit.damage_amount(unit)
+            new_game.mod_health_simulation(coords.src, -abs(dmgToOwnUnit))
+            new_game.mod_health_simulation(coords.dst, -abs(dmgToTargetUnit))
+        # If the dst tile is an ally and is adjacent, simulate a repair
+        elif new_game.is_tile_adjacent(coords) and new_game.is_target_ally(coords):
+            unit = new_game.get(coords.src)
+            target_unit = new_game.get(coords.dst)
+            healToTargetUnit = unit.repair_amount(target_unit)
+            new_game.mod_health_simulation(coords.dst, +abs(healToTargetUnit))
+        elif new_game.is_src_tile_dst(coords):
+            self_destruct_unit = new_game.get(coords.src)
+            
+            # List of all possible surrounding coordinates
+            surrounding_coords = [
+                Coord(row=coords.src.row - 1, col=coords.src.col - 1),  # top-left
+                Coord(row=coords.src.row - 1, col=coords.src.col),      # top
+                Coord(row=coords.src.row - 1, col=coords.src.col + 1),  # top-right
+                Coord(row=coords.src.row, col=coords.src.col - 1),      # left
+                Coord(row=coords.src.row, col=coords.src.col + 1),      # right
+                Coord(row=coords.src.row + 1, col=coords.src.col - 1),  # bottom-left
+                Coord(row=coords.src.row + 1, col=coords.src.col),      # bottom
+                Coord(row=coords.src.row + 1, col=coords.src.col + 1)   # bottom-right
+            ]
+
+            for sur_coord in surrounding_coords:
+                if new_game.is_valid_coord(sur_coord):
+                    target_unit = new_game.get(sur_coord)
+                    if target_unit:
+                        # Damage amount to the target unit (you may adjust the damage value)
+                        damage_to_target = 2
+                        # Modify the health of the target unit
+                        new_game.mod_health_simulation(sur_coord, -abs(damage_to_target))
+            
+            # Reduce the health of the self-destructing unit to 0
+            new_game.mod_health_simulation(coords.src, -abs(self_destruct_unit.health))
+
+        # update turn ctr & next player
+        new_game.next_turn()
+
+        return new_game  # Return the new game state with the simulated move
+    
     def next_turn(self):
         """Transitions game to the next turn."""
         self.next_player = self.next_player.next()
@@ -637,147 +708,117 @@ class Game:
 
     def move_candidates(self) -> Iterable[CoordPair]:
         """Generate valid move candidates for the next player."""
+        BOARD_HEIGHT = 5  # Define the height of your board
+        BOARD_WIDTH = 5   # Define the width of your board
+        
         move = CoordPair()
-        for (src,_) in self.player_units(self.next_player):
+        for (src, _) in self.player_units(self.next_player):
             move.src = src
             for dst in src.iter_adjacent():
-                move.dst = dst
-                print(f'move: {move}')
-                if self.is_valid_move(move):
-                    yield move.clone()
+                # Check if the destination coordinates are within the board
+                if 0 <= dst.row < BOARD_HEIGHT and 0 <= dst.col < BOARD_WIDTH:
+                    move.dst = dst
+                    if self.is_valid_move(move) or (self.board[dst.row][dst.col] is not None and self.is_target_adversary(move)):
+                        yield move.clone()
             move.dst = src
             yield move.clone()
 
-    def is_initial_board(self) -> bool:
+    def get_enemy_coord(self, type: UnitType) -> Coord:
+        for row in range(self.options.dim):
+            for col in range(self.options.dim):
+                coord = Coord(row, col)
+                unit = self.get(coord)
+                
+                if unit is not None and unit.type == type and unit.player != self.next_player:
+                    return  Coord(row, col)
 
-        initial_board = [
-            [Unit(player=Player.Defender, type=UnitType.AI, health=9), Unit(player=Player.Defender, type=UnitType.Tech, health=9), Unit(player=Player.Defender, type=UnitType.Firewall, health=9), None, None],
-            [Unit(player=Player.Defender, type=UnitType.Tech, health=9), Unit(player=Player.Defender, type=UnitType.Program, health=9), None, None, None],
-            [Unit(player=Player.Defender, type=UnitType.Firewall, health=9), None, None, None, Unit(player=Player.Attacker, type=UnitType.Program, health=9)],
-            [None, None, None, Unit(player=Player.Attacker, type=UnitType.Firewall, health=9), Unit(player=Player.Attacker, type=UnitType.Virus, health=9)],
-            [None, None, Unit(player=Player.Attacker, type=UnitType.Program, health=9), Unit(player=Player.Attacker, type=UnitType.Virus, health=9), Unit(player=Player.Attacker, type=UnitType.AI, health=9)]
-        ]
+    #Distance = |x1 - x2| + |y1 - y2|
+    def get_manhattan_distance(self, coord: Coord, type: UnitType) -> float:
+        x1 = coord.row
+        y1 = coord.col
 
-        # Check if the current board matches the initial board
-        for row in range(len(initial_board)):
-            for col in range(len(initial_board[0])):
-                initial_unit = initial_board[row][col]
-                current_unit = self.get(Coord(row, col))
-                if initial_unit is not None and (current_unit is None or initial_unit != current_unit):
-                    return False
+        x2 = 0
+        y2 = 0
+        enemy_coord = None
+        if type == UnitType.AI:
+            enemy_coord = self.get_enemy_coord(type)
+        elif type == UnitType.Virus:
+            enemy_coord = self.get_enemy_coord(type)
 
-        return True
+        if enemy_coord is not None:
+            x2 = enemy_coord.row
+            y2 = enemy_coord.col
+            return abs(x1-x2) + abs(y1-y2)
+        
+        return 0
 
-    def get_surrounding_enemies(self, coord : Coord) -> Iterable[Unit]:
-        adjU = self.get(Coord(coord.row-1,coord.col)) #tile on top of selected unit
-        adjR = self.get(Coord(coord.row,coord.col+1)) #tile on right of selected unit
-        adjD = self.get(Coord(coord.row+1,coord.col)) #tile on bottom of selected unit
-        adjL = self.get(Coord(coord.row,coord.col-1)) #tile on left of selected unit
 
-        unit_list = [adjU, adjR, adjD, adjL]
-        enemies_list = []
+    def heuristic_one(self) -> float:
+        hp_a_virus = 0
+        hp_a_program = 0
+        hp_d_program = 0
+        hp_d_tech = 0
+        hp_a_ai = 0
+        hp_d_ai = 0
+        hp_a_firewall = 0
+        hp_d_firewall = 0
 
-        for unit in unit_list:
-            if unit is not None and unit.player != self.next_player:
-                enemies_list.append(unit)
+        virus_weight = 6
+        program_weight = 4
+        tech_weight = 6
+        firewall_weight = 3
+        ai_weight = 9999
 
-        return enemies_list
+        a_virus_to_enemy_ai_distance = 0
+        a_program_to_enemy_ai_distance = 0
+        d_program_to_enemy_ai_distance = 0
+        d_tech_to_enemy_virus_distance = 0
+        a_firewall_to_enemy_ai_distance = 0
+        d_firewall_to_enemy_ai_distance = 0
 
-    def get_surrounding_allies(self, coord : Coord) -> Iterable[Unit]:
-        adjU = self.get(Coord(coord.row-1,coord.col)) #tile on top of selected unit
-        adjR = self.get(Coord(coord.row,coord.col+1)) #tile on right of selected unit
-        adjD = self.get(Coord(coord.row+1,coord.col)) #tile on bottom of selected unit
-        adjL = self.get(Coord(coord.row,coord.col-1)) #tile on left of selected unit
-
-        unit_list = [adjU, adjR, adjD, adjL]
-        allies_list = []
-
-        for unit in unit_list:
-            if unit is not None and unit.player == self.next_player:
-                allies_list.append(unit)
-
-        return allies_list
-    
-    def calculate_program_net_worth(self, unit: Unit, enemies : Iterable[Unit]) -> int:
         score = 0
-        for enemy in enemies:
-            if enemy.type.name == 'AI':
-                if unit.health >= enemy.health:
-                    score += 10
-            elif enemy.type.name == 'Program':
-                if unit.health >= enemy.health:
-                    score += 5
-            elif enemy.type.name == 'Tech':
-                if unit.health >= enemy.health:
-                    score += 10
+
+        for row in range(self.options.dim):
+            for col in range(self.options.dim):
+                coord = Coord(row, col)
+                unit = self.get(coord)
+                
+                if unit is not None and coord is not None:
+                    if unit.type == UnitType.Virus and unit.player == Player.Attacker:
+                            a_virus_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
+                            hp_a_virus += unit.health
+                    if unit.type == UnitType.Program: 
+                        if unit.player == Player.Attacker:
+                            a_program_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
+                            hp_a_program += unit.health
+                        else:
+                            d_program_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
+                            hp_d_program += unit.health
+                    if unit.type == UnitType.Tech and unit.player == Player.Defender:
+                        hp_d_tech += unit.health
+                    if unit.type == UnitType.AI:
+                        if unit.player == Player.Attacker:
+                            hp_a_ai += unit.health
+                        else:
+                            hp_d_ai += unit.health
+                    if unit.type == UnitType.Firewall:
+                        if unit.player == Player.Attacker:
+                            hp_a_firewall += unit.health
+                            a_firewall_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
+                        else:
+                            hp_d_firewall += unit.health
+                            d_firewall_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
+
+
+
+        attacker_score = (virus_weight * hp_a_virus + (5*(self.options.dim * 2 - a_virus_to_enemy_ai_distance)) + 
+         (program_weight * hp_a_program + (4*(self.options.dim * 2 - (a_program_to_enemy_ai_distance)))) + (hp_a_ai * ai_weight) + (hp_a_firewall * firewall_weight + (4*(self.options.dim * 2 - (a_firewall_to_enemy_ai_distance)))))
+        
+        defender_score =  (tech_weight * hp_d_tech + (5*(self.options.dim * 2 - d_tech_to_enemy_virus_distance))) + (hp_d_ai * ai_weight) + (program_weight * hp_d_program + (5*(self.options.dim * 2 - (d_program_to_enemy_ai_distance)))) + (hp_d_firewall * firewall_weight + (4*(self.options.dim * 2 - (a_firewall_to_enemy_ai_distance))))
+
+        score = attacker_score - defender_score
+
         return score
-    
-    
-    def calculate_virus_net_worth(self, unit: Unit, enemies : Iterable[Unit]) -> int:
-        score = 0
-        for enemy in enemies:
-            # a Virus can destroy the opponent's AI in one move
-            if enemy.type.name == 'AI':
-                score += 50
-            # a Virus inflicts 6 pts of damage to a Program in one move
-            elif enemy.type.name == 'Program':
-                score += 15
-            # we want to destroy Techs as they can repair defensive units
-            elif enemy.type.name == 'Tech':
-                score += 30
-        return score
-    
-            
-    def calculate_ai_net_worth(self, unit: Unit, enemies : Iterable[Unit]) -> int:
-        score = 0
-        for enemy in enemies:
-            if enemy.type.name == 'AI':
-                if unit.health <= enemy.health:
-                    score -= 50
-            elif enemy.type.name == 'Program':
-                if unit.health <= enemy.health:
-                    score -= 50
-            elif enemy.type.name == 'Firewall':
-                score -= 5
-            elif enemy.type.name == 'Tech':
-                if unit.health <= enemy.health:
-                    score -= 50
-        return score
-    
-    def calculate_tech_net_worth(self, unit: Unit, enemies : Iterable[Unit]) -> int:
-        score = 0
-        for enemy in enemies:
-            if enemy.type.name == 'AI':
-                if unit.health >= enemy.health:
-                    score -= 50
-            elif enemy.type.name == 'Program':
-                if unit.health <= enemy.health:
-                    score -= 50
-        return score
-
-    
-    # Calculate net worth of each move and number of surrounding techs, AI
-    def heuristic_two(game: Game) -> int:
-
-        total = 0
-       
-        for (src,_) in game.player_units(game.next_player):
-            current_unit = game.get(src)
-            print(src,_)
-
-            if current_unit is not None:
-                enemies = game.get_surrounding_enemies(src)
-
-                if current_unit.type.name == 'Program':
-                    total += game.calculate_program_net_worth(current_unit, enemies)
-                elif current_unit.type.name == 'Virus':
-                    total += game.calculate_virus_net_worth(current_unit, enemies)
-                elif current_unit.type.name == 'AI':
-                    total += game.calculate_virus_net_worth(current_unit, enemies)
-                elif current_unit.type.name == 'Tech':
-                    total += game.calculate_tech_net_worth(current_unit, enemies)
-
-        return total
 
     def random_move(self) -> Tuple[int, CoordPair | None, float]:
         """Returns a random move."""
@@ -788,23 +829,188 @@ class Game:
         else:
             return (0, None, 0)
 
-    def suggest_move(self) -> CoordPair | None:
-        """Suggest the next move using minimax alpha beta. TODO: REPLACE RANDOM_MOVE WITH PROPER GAME LOGIC!!!"""
-        start_time = datetime.now()
-        (score, move, avg_depth) = self.random_move()
-        elapsed_seconds = (datetime.now() - start_time).total_seconds()
-        self.stats.total_seconds += elapsed_seconds
+    def evaluate_state(self, evaluator: Player) -> float:
+        """
+        Evaluates the game state using a heuristic that considers the count and type of units for each player.
+        """
+
+        # Initialize counts for each unit type for both players
+        V_P1 = T_P1 = F_P1 = P_P1 = AI_P1 = 0
+        V_P2 = T_P2 = F_P2 = P_P2 = AI_P2 = 0
+
+        # Health of each unit type for both players
+        HP_P_P1 = 0 #program attacker
+        HP_F_P1 = 0 #firewall attacker
+        HP_V_P1 = 0 #virus attacker
+        HP_A_P1 = 0 #ai attacker
+
+        HP_P_P2 = 0 #program defender
+        HP_F_P2 = 0 #firewall defender
+        HP_T_P2 = 0 #tech defender
+        HP_A_P2 = 0 #ai defender
+
+        
+        # Iterate over all cells in the game board to count unit types for each player
+        for row in self.board:
+            for cell in row:
+                if cell is not None:  # Check if the cell is not empty
+                    unit_type = getattr(cell, 'type', None)  # Safely get 'type' attribute
+                    player = getattr(cell, 'player', None)   # Safely get 'player' attribute
+                    
+                    # Check if 'type' and 'player' attributes exist and are not None
+                    if unit_type is not None and player is not None:
+                        # Increment counts based on unit type and owner
+                        if unit_type == UnitType.Virus:
+                            if player == Player.Attacker:
+                                V_P1 += 1
+                                HP_V_P1 += cell.health
+                            else:
+                                V_P2 += 1
+                        elif unit_type == UnitType.Tech:
+                            if player == Player.Attacker:
+                                T_P1 += 1
+                            else:
+                                T_P2 += 1
+                                HP_T_P2 += cell.health
+                        elif unit_type == UnitType.Firewall:
+                            if player == Player.Attacker:
+                                F_P1 += 1
+                                HP_F_P1 += cell.health
+                            else:
+                                F_P2 += 1
+                                HP_F_P2 += cell.health
+                        elif unit_type == UnitType.Program:
+                            if player == Player.Attacker:
+                                P_P1 += 1
+                                HP_P_P1 += cell.health
+                            else:
+                                P_P2 += 1
+                                HP_P_P2 += cell.health
+                        elif unit_type == UnitType.AI:
+                            if player == Player.Attacker:
+                                AI_P1 += 1
+                                HP_A_P1 += cell.health
+                            else:
+                                AI_P2 += 1
+                                HP_A_P2 += cell.health 
+                    
+        # Compute the heuristic value using the counts and weights for each unit type
+        e0 = (3 * V_P1 + 3 * T_P1 + 3 * F_P1 + 3 * P_P1 + 9999 * AI_P1) - (3 * V_P2 + 3 * T_P2 + 3 * F_P2 + 3 * P_P2 + 9999 * AI_P2)  
+        e2 = (2*HP_P_P1 + 4*HP_V_P1 + 2*HP_F_P1 + 9999*HP_A_P1) - (2*HP_P_P2 + 4*HP_T_P2 + 2*HP_F_P2 + 9999*HP_A_P2)
+
+        #e1 = self.heuristic_one()
+        if evaluator == Player.Defender:  # Invert Perspective for Heuristic Score
+            e0 = -e0
+
+        # To use e2, simply replace e0 with e2 below:
+        return float(e0)
+
+    def minimax(self, depth, evaluator: Player, maximizing_player, start_time, time_limit):
+        if depth == 0 or (time.time() - start_time) > time_limit or self.is_finished():
+            return self.evaluate_state(evaluator), None, {depth: 1}
+
+        move_candidates = list(self.move_candidates())
+        best_move = None
+        evals_per_depth = {depth: 0}
+
+        if maximizing_player:
+            max_eval = float('-inf')
+            for move in move_candidates:
+                new_game_state = self.simulate_move(move)
+                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, evaluator, False, start_time, time_limit)  # Including evaluator as a parameter
+                if eval > max_eval:
+                    max_eval = eval
+                    best_move = move
+                evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
+            return max_eval, best_move, evals_per_depth
+
+        else:
+            min_eval = float('inf')
+            for move in move_candidates:
+                new_game_state = self.simulate_move(move)
+                eval, _, child_evals_per_depth = new_game_state.minimax(depth - 1, evaluator, True, start_time, time_limit)  # Including evaluator as a parameter
+                if eval < min_eval:
+                    min_eval = eval
+                    best_move = move
+                evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
+            return min_eval, best_move, evals_per_depth
+
+    def alpha_beta(self, depth, evaluator: Player, alpha, beta, maximizing_player, start_time, time_limit):
+        # Base Case: depth reached or time limit exceeded
+        current_time = time.time()
+        if depth == 0 or (current_time - start_time) > time_limit or self.is_finished():
+            return self.evaluate_state(evaluator), None, {depth: 1}
+        
+        move_candidates = list(self.move_candidates())
+        best_move = None
+        evals_per_depth = {depth: 0}
+        
+        if maximizing_player:
+            max_eval = float('-inf')
+            for move in move_candidates:
+                if (time.time() - start_time) > time_limit:
+                    break  # Exit loop if time limit is exceeded
+                new_game_state = self.simulate_move(move)  # Get the new game state
+                eval, _, child_evals_per_depth = new_game_state.alpha_beta(depth - 1, evaluator, alpha, beta, False, start_time, time_limit)  # Use the new game state and pass evaluator
+                if eval > max_eval:
+                    max_eval = eval
+                    best_move = move
+                alpha = max(alpha, eval)
+                evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
+                if beta <= alpha:
+                    break  # Alpha-beta pruning
+            return max_eval, best_move, evals_per_depth
+        else:
+            min_eval = float('inf')
+            for move in move_candidates:
+                if (time.time() - start_time) > time_limit:
+                    break  # Exit loop if time limit is exceeded
+                new_game_state = self.simulate_move(move)  # Get the new game state
+                eval, _, child_evals_per_depth = new_game_state.alpha_beta(depth - 1, evaluator, alpha, beta, True, start_time, time_limit)  # Use the new game state and pass evaluator
+                if eval < min_eval:
+                    min_eval = eval
+                    best_move = move
+                beta = min(beta, eval)
+                evals_per_depth[depth] = evals_per_depth.get(depth, 0) + 1 + sum(child_evals_per_depth.values())
+                if beta <= alpha:
+                    break  # Alpha-beta pruning
+            return min_eval, best_move, evals_per_depth
+
+
+    def suggest_move(self):
+        start_time = time.time()  # Current time in seconds
+        time_limit = self.options.max_time
+
+        current_player = self.next_player
+
+        # Check the alpha_beta attribute of options to select the algorithm
+        if self.options.alpha_beta:
+            score, best_move, evals_per_depth = self.alpha_beta(self.options.max_depth, current_player, float('-inf'), float('inf'), True, start_time, time_limit)  
+        else:
+            # Call minimax with start_time and time_limit parameters
+            score, best_move, evals_per_depth = self.minimax(self.options.max_depth, current_player, True, start_time, time_limit)
+
+        # Calculate elapsed time
+        elapsed_seconds = time.time() - start_time
+
+        # Calculate and print statistics
+        avg_depth = sum(depth * evals for depth, evals in evals_per_depth.items()) / sum(evals_per_depth.values())
+        
         print(f"Heuristic score: {score}")
         print(f"Average recursive depth: {avg_depth:0.1f}")
-        print(f"Evals per depth: ",end='')
-        for k in sorted(self.stats.evaluations_per_depth.keys()):
-            print(f"{k}:{self.stats.evaluations_per_depth[k]} ",end='')
+        print(f"Evals per depth: ", end='')
+        for k in sorted(evals_per_depth.keys()):
+            print(f"{k}:{evals_per_depth[k]} ", end='')
         print()
-        total_evals = sum(self.stats.evaluations_per_depth.values())
-        if self.stats.total_seconds > 0:
-            print(f"Eval perf.: {total_evals/self.stats.total_seconds/1000:0.1f}k/s")
+        total_evals = sum(evals_per_depth.values())
+        if elapsed_seconds > 0:
+            print(f"Eval perf.: {total_evals/elapsed_seconds/1000:0.1f}k/s")
         print(f"Elapsed time: {elapsed_seconds:0.1f}s")
-        return move
+        
+        # Return the best move
+        return best_move
+
+
 
     def post_move_to_broker(self, move: CoordPair):
         """Send a move to the game broker."""
@@ -877,9 +1083,9 @@ def read_is_alphabeta() -> str:
     while True:
         bool_input = input('Enter an algorithm: alpha-beta (T) or minimax (F): ')
         if bool_input.upper() == 'T':
-            return 'true'
+            return True
         elif bool_input.upper() == 'F':
-            return 'false'
+            return False
         else:
             print('Invalid input. Please put T for alpha-beta and F for minimax.')
 
@@ -940,7 +1146,8 @@ def main():
 
     is_alphabeta = read_is_alphabeta() #NOT USED IN D1
     playmode = read_playmodes() #NOT USED IN D1
-
+    options.alpha_beta = is_alphabeta
+    
     # Create Output file gameTrace-<b>-<t>-<m>.txt
     global filename
     filename = "gameTrace-{}-{}-{}.txt".format(is_alphabeta, max_time, max_turns)
@@ -962,9 +1169,6 @@ def main():
     elif playmode == "comp":
         fileparam_playmode = "Player 1 = AI & Player 2 = AI\n"
 
-    # for now, only H-H can be done
-    fileparam_playmode = "Player 1 = H & Player 2 = H\n"
-
     f.write(fileparam_playmode)
     f.close()
 
@@ -979,7 +1183,15 @@ def main():
 
     # create a new game
     game = Game(options=options)
-    game.heuristic_two()
+
+    # TODO: Check if this is correct, did this to try AI
+    if playmode == "attacker":
+        game.options.game_type = GameType.AttackerVsComp
+    elif playmode == "defender":
+        game.options.game_type = GameType.CompVsDefender
+    elif playmode == "comp":
+        game.options.game_type = GameType.CompVsComp
+
 
     # the main game loop
     while True:
