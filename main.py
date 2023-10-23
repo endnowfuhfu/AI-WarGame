@@ -768,16 +768,19 @@ class Game:
 
         virus_weight = 6
         program_weight = 4
+        d_program_weight = 6
         tech_weight = 6
         firewall_weight = 3
-        ai_weight = 9999
+        ai_weight = 20000
 
         a_virus_to_enemy_ai_distance = 0
         a_program_to_enemy_ai_distance = 0
         d_program_to_enemy_ai_distance = 0
-        d_tech_to_enemy_virus_distance = 0
+        d_tech_to_enemy_ai_distance = 0
         a_firewall_to_enemy_ai_distance = 0
         d_firewall_to_enemy_ai_distance = 0
+        a_ai_to_enemy_ai_distance = 0
+        d_ai_to_enemy_ai_distance = 0
 
         score = 0
 
@@ -799,11 +802,14 @@ class Game:
                             hp_d_program += unit.health
                     if unit.type == UnitType.Tech and unit.player == Player.Defender:
                         hp_d_tech += unit.health
+                        d_tech_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
                     if unit.type == UnitType.AI:
                         if unit.player == Player.Attacker:
                             hp_a_ai += unit.health
+                            a_ai_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
                         else:
                             hp_d_ai += unit.health
+                            d_ai_to_enemy_ai_distance += self.get_manhattan_distance(coord, UnitType.AI)
                     if unit.type == UnitType.Firewall:
                         if unit.player == Player.Attacker:
                             hp_a_firewall += unit.health
@@ -815,9 +821,9 @@ class Game:
 
 
         attacker_score = (virus_weight * hp_a_virus + (5*(self.options.dim * 2 - a_virus_to_enemy_ai_distance)) + 
-         (program_weight * hp_a_program + (4*(self.options.dim * 2 - (a_program_to_enemy_ai_distance)))) + (hp_a_ai * ai_weight) + (hp_a_firewall * firewall_weight + (4*(self.options.dim * 2 - (a_firewall_to_enemy_ai_distance)))))
+         (program_weight * hp_a_program + (4*(self.options.dim * 2 - (a_program_to_enemy_ai_distance)))) + (hp_a_ai * ai_weight+(1*(self.options.dim * 2 - (a_ai_to_enemy_ai_distance)))) + (hp_a_firewall * firewall_weight + (4*(self.options.dim * 2 - (a_firewall_to_enemy_ai_distance)))))
         
-        defender_score =  (tech_weight * hp_d_tech + (5*(self.options.dim * 2 - d_tech_to_enemy_virus_distance))) + (hp_d_ai * ai_weight) + (program_weight * hp_d_program + (5*(self.options.dim * 2 - (d_program_to_enemy_ai_distance)))) + (hp_d_firewall * firewall_weight + (4*(self.options.dim * 2 - (a_firewall_to_enemy_ai_distance))))
+        defender_score =  (tech_weight * hp_d_tech + (5*(self.options.dim * 2 - d_tech_to_enemy_ai_distance))) + (hp_d_ai * ai_weight + (1*(self.options.dim*2 - (d_ai_to_enemy_ai_distance)))) + (d_program_weight * hp_d_program + (5*(self.options.dim * 2 - (d_program_to_enemy_ai_distance)))) + (hp_d_firewall * firewall_weight + (4*(self.options.dim * 2 - (a_firewall_to_enemy_ai_distance))))
 
         score = attacker_score - defender_score
 
